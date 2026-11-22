@@ -1,0 +1,8 @@
+# 本地测试数据与个人轨迹（含隐私，不上传）
+_test*/
+_perf/
+
+# 系统临时文件
+.DS_Store
+Thumbs.db
+*.tmp

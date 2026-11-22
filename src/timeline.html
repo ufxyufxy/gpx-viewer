@@ -1,0 +1,1328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>GPX Timeline · 轨迹时间线</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" data-vendor="leaflet.css"/>
+<style>
+:root{
+  --bg:#0e131c;--panel:#151d2a;--panel2:#1c2636;--line:#2b384c;
+  --text:#e9eef7;--mute:#8c9ab1;--accent:#5b9dff;--soft:#203453;--chip:#202c3e;
+  --good:#3ddc97;--warn:#f5b942;--hot:#ff6b6b;--shadow:0 10px 36px rgba(0,0,0,.42);
+  --glass:rgba(21,29,42,.94)
+}
+body.light{
+  --bg:#eef2f7;--panel:#fff;--panel2:#f5f8fc;--line:#e0e7f0;
+  --text:#1b2432;--mute:#75839a;--accent:#1f6feb;--soft:#e7f0ff;--chip:#eef2f8;
+  --shadow:0 10px 30px rgba(24,44,80,.14);--glass:rgba(255,255,255,.95)
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text);background:var(--bg)}
+button,input,select{font-family:inherit}
+button{cursor:pointer}
+#app{position:fixed;inset:0}
+#map{position:absolute;inset:0;background:var(--bg)}
+#map.dark-tiles .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.84) contrast(.92) saturate(.7)}
+.leaflet-container{background:var(--bg)}
+.leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;border-color:var(--line)!important}
+.leaflet-control-attribution{background:var(--glass)!important;color:var(--mute)!important}
+.leaflet-control-attribution a{color:var(--accent)!important}
+.leaflet-control-scale-line{border-color:var(--text)!important;background:var(--glass)!important;color:var(--text)!important}
+.leaflet-tooltip{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:var(--shadow)}
+.leaflet-tooltip:before{border-top-color:var(--panel)}
+.heatcanvas{position:absolute;left:0;top:0;pointer-events:none;z-index:350}
+
+/* 顶栏 */
+#topbar{position:absolute;top:10px;left:10px;right:10px;z-index:1300;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+#topbar>*{pointer-events:auto}
+.card{background:var(--glass);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.brand{display:flex;align-items:center;gap:9px;padding:7px 12px;white-space:nowrap}
+.brand .logo{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff}
+.brand b{font-size:13.5px;font-weight:650;letter-spacing:.2px}
+.brand small{display:block;font-size:10.5px;color:var(--mute);line-height:1.2}
+.rangebox{display:flex;align-items:center;gap:5px;padding:5px 7px}
+.rangebox input[type=date]{width:122px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:4px 5px;font-size:12px;outline:none;color-scheme:dark}
+body.light .rangebox input[type=date]{color-scheme:light}
+.rangebox input[type=date]:focus{border-color:var(--accent)}
+.rangebox .sep{color:var(--mute);font-size:12px}
+.navb{width:24px;height:25px;border:1px solid var(--line);background:var(--panel2);color:var(--mute);border-radius:6px;font-size:13px;line-height:1}
+.navb:hover{color:var(--accent);border-color:var(--accent)}
+.quick{display:flex;gap:4px;padding:5px 6px}
+.quick button,.acts button{border:0;background:transparent;color:var(--mute);font-size:11.5px;padding:4px 8px;border-radius:6px;white-space:nowrap}
+.quick button:hover,.acts button:hover{background:var(--chip);color:var(--text)}
+.quick button.on{background:var(--soft);color:var(--accent);font-weight:600}
+.acts{display:flex;align-items:center;gap:3px;padding:4px 6px}
+.acts button.ico{font-size:14px;padding:4px 9px}
+#basemaps{position:absolute;top:62px;right:10px;z-index:1250;display:flex;gap:3px;padding:4px}
+#basemaps button{border:0;background:transparent;color:var(--mute);font-size:11px;padding:4px 8px;border-radius:6px;white-space:nowrap}
+#basemaps button.on{background:var(--accent);color:#fff}
+
+/* 左侧图标条 */
+#rail{position:absolute;left:10px;top:78px;z-index:1300;display:flex;flex-direction:column;gap:4px;padding:5px}
+#rail button{width:36px;height:36px;border:0;background:transparent;color:var(--mute);border-radius:9px;font-size:16px;display:flex;align-items:center;justify-content:center}
+#rail button:hover{background:var(--chip);color:var(--text)}
+#rail button.on{background:var(--soft);color:var(--accent)}
+
+/* 侧边面板 */
+#side{position:absolute;left:58px;top:78px;bottom:16px;width:328px;z-index:1280;display:none;flex-direction:column;overflow:hidden;background:var(--panel)}
+#side.on{display:flex}
+.sidehead{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.sidehead h2{margin:0;font-size:14px;font-weight:650;flex:1}
+.sidehead .sub{font-size:11px;color:var(--mute);font-weight:400;margin-left:6px}
+.sidehead button{border:0;background:transparent;color:var(--mute);font-size:19px;line-height:1;padding:0 3px}
+.sidehead button:hover{color:var(--text)}
+#sideBody{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:10px 12px 24px}
+.sec{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.08em;margin:6px 2px 8px}
+.sec:not(:first-child){margin-top:18px}
+.hint{font-size:11.5px;color:var(--mute);line-height:1.7}
+.hint b{color:var(--text);font-weight:500}
+
+/* 时间线 */
+.tcard{display:flex;gap:9px;align-items:flex-start;padding:9px 8px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+.tcard:hover{background:var(--panel2)}
+.tcard.off{opacity:.42}
+.tcard .bar{width:4px;align-self:stretch;min-height:30px;border-radius:3px;flex:0 0 auto}
+.tcard .m{flex:1;min-width:0}
+.tcard .d{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.tcard .wk{font-size:10.5px;color:var(--mute);font-weight:400;margin-left:5px}
+.tcard .s{font-size:11px;color:var(--mute);margin-top:2px}
+.tcard .r{text-align:right;font-size:11.5px;color:var(--text);white-space:nowrap;padding-top:2px}
+.tcard input{width:14px;height:14px;accent-color:var(--accent);margin-top:3px;flex:0 0 auto;cursor:pointer}
+.rowacts{display:flex;gap:6px;margin:10px 2px 2px;flex-wrap:wrap}
+.rowacts button{border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:11.5px;padding:5px 10px;border-radius:7px}
+.rowacts button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 日历 */
+.calhead{display:flex;align-items:center;justify-content:space-between;margin:2px 2px 10px}
+.calhead b{font-size:13.5px;font-variant-numeric:tabular-nums}
+.calhead div{display:flex;gap:5px}
+.calhead button{border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12px;width:26px;height:25px;border-radius:6px}
+.calhead button.w{width:auto;padding:0 9px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.caldow{text-align:center;font-size:10.5px;color:var(--mute);padding:2px 0}
+.calcell{aspect-ratio:1;border-radius:6px;background:var(--chip);font-size:11px;display:flex;align-items:center;justify-content:center;color:var(--mute);border:1px solid transparent;user-select:none;font-variant-numeric:tabular-nums}
+.calcell.blank{background:transparent}
+.calcell.has{color:var(--text);cursor:pointer}
+.calcell.has:hover{border-color:var(--accent)}
+.calcell.l1{background:rgba(91,157,255,.22)}
+.calcell.l2{background:rgba(91,157,255,.42)}
+.calcell.l3{background:rgba(91,157,255,.66)}
+.calcell.l4{background:rgba(91,157,255,.92);color:#fff}
+.calcell.inrange{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.calcell.today{outline:1px solid var(--warn);outline-offset:1px}
+body.light .calcell.l4{color:#fff}
+.calcols{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:10px;font-size:10.5px;color:var(--mute)}
+.calcols i{width:13px;height:13px;border-radius:3px;display:inline-block;background:var(--chip)}
+.calcols i.a{background:rgba(91,157,255,.22)}.calcols i.b{background:rgba(91,157,255,.42)}
+.calcols i.c{background:rgba(91,157,255,.66)}.calcols i.d{background:rgba(91,157,255,.92)}
+
+/* 统计 */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 11px}
+.kpi span{font-size:10.5px;color:var(--mute);display:block}
+.kpi b{font-size:19px;font-weight:650;display:block;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi b em{font-size:11px;font-style:normal;font-weight:400;color:var(--mute);margin-left:3px}
+.brow{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px;cursor:pointer}
+.brow:hover .bl{color:var(--accent)}
+.brow .bl{width:56px;color:var(--mute);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.brow .bt{flex:1;height:9px;background:var(--chip);border-radius:5px;overflow:hidden}
+.brow .bf{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),#8b5cf6)}
+.brow .bv{width:58px;text-align:right;color:var(--text);flex:0 0 auto;font-variant-numeric:tabular-nums}
+.mini{display:flex;justify-content:space-between;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--line)}
+.mini:last-child{border-bottom:0}
+.mini span{color:var(--mute)}
+
+/* 图层 */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ltile{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:9px 10px;text-align:left;color:var(--text)}
+.ltile b{display:block;font-size:12px;font-weight:600}
+.ltile small{display:block;font-size:10.5px;color:var(--mute);margin-top:2px;line-height:1.4}
+.ltile.on{border-color:var(--accent);background:var(--soft)}
+.ltile.on b{color:var(--accent)}
+.pillrow{display:flex;gap:6px;flex-wrap:wrap}
+.pill{border:1px solid var(--line);background:var(--panel2);color:var(--mute);font-size:11.5px;padding:5px 10px;border-radius:7px}
+.pill.on{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+.pill:hover{color:var(--text)}
+
+/* 导入 */
+.impbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 12px}
+.impbtns label{display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12px;padding:11px 8px;border-radius:9px;cursor:pointer;text-align:center}
+.impbtns label:hover{border-color:var(--accent);color:var(--accent)}
+.impbtns label.pri{border-color:var(--accent);background:var(--soft);color:var(--accent);font-weight:600}
+.impbtns label.wide{grid-column:1 / -1}
+.no-dir [data-dirbtn]{display:none!important}
+.impstat{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 11px;font-size:11.5px;line-height:1.75;color:var(--mute);word-break:break-all}
+.impstat b{color:var(--text);font-weight:600}
+.danger{border:1px solid var(--line);background:transparent;color:var(--mute);font-size:11.5px;padding:6px 11px;border-radius:7px;margin-top:10px}
+.danger:hover{border-color:var(--hot);color:var(--hot)}
+
+/* 图例 / 欢迎 / 提示 */
+#legend{position:absolute;right:10px;bottom:10px;z-index:1200;padding:9px 11px;font-size:11px;max-width:230px}
+#legend .lt{color:var(--mute);margin-bottom:6px}
+#legend .lg{display:flex;align-items:center;gap:5px;margin:3px 0;color:var(--text)}
+#legend .sw{width:14px;height:4px;border-radius:2px;flex:0 0 auto}
+#legend .tot{margin-top:7px;padding-top:6px;border-top:1px solid var(--line);color:var(--text);font-weight:600}
+#welcome{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1220;width:min(360px,calc(100% - 32px));padding:22px;text-align:center}
+#welcome h3{margin:0 0 8px;font-size:16px}
+#welcome p{margin:0;color:var(--mute);font-size:12px;line-height:1.8}
+#welcome label{display:inline-block;margin-top:16px;padding:9px 20px;background:var(--accent);color:#fff;border-radius:8px;font-size:12.5px;cursor:pointer}
+#toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%) translateY(8px);background:rgba(16,23,34,.95);color:#eef3fb;font-size:12.5px;padding:9px 16px;border-radius:9px;z-index:3000;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:80%;text-align:center;line-height:1.6;border:1px solid var(--line)}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#drop{position:absolute;inset:0;background:rgba(31,111,235,.88);color:#fff;display:none;align-items:center;justify-content:center;font-size:18px;z-index:3100;pointer-events:none}
+#drop.on{display:flex}
+.hidden-file{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;overflow:hidden}
+
+@media (min-width:821px) and (max-width:1080px){
+  #rail,#side{top:112px}
+  #basemaps{top:112px}
+}
+@media (max-width:820px){
+  #topbar{top:8px;left:8px;right:8px;gap:6px}
+  .brand{padding:6px 10px}
+  .brand b{font-size:12.5px}
+  .brand small{display:none}
+  .acts{margin-left:auto}
+  .rangebox{order:5;width:100%;justify-content:space-between}
+  .rangebox input[type=date]{flex:1;width:auto;min-width:0}
+  .quick{order:6;width:100%;overflow-x:auto;justify-content:space-between}
+  .quick button{flex:0 0 auto}
+  #basemaps{top:132px;bottom:auto;right:8px;padding:3px}
+  #rail{left:8px;right:8px;top:auto;bottom:8px;flex-direction:row;justify-content:space-around;padding:4px 3px}
+  #rail button{width:auto;flex:1;height:42px;font-size:17px}
+  #side{left:0;right:0;top:auto;bottom:58px;width:auto;height:52vh;border-radius:14px 14px 0 0}
+  .sidehead{padding:14px 14px 9px}
+  #sideBody{padding-bottom:20px}
+  #legend{display:none}
+  #toast{top:170px;bottom:auto;transform:translateX(-50%) translateY(-8px)}
+  #toast.on{transform:translateX(-50%) translateY(0)}
+  .leaflet-bottom{bottom:62px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+
+  <header id="topbar">
+    <div class="brand card">
+      <span class="logo">◉</span>
+      <span><b>GPX Timeline</b><small id="topsub">轨迹时间线</small></span>
+    </div>
+    <div class="rangebox card">
+      <button class="navb" id="prev" title="往前一天">‹</button>
+      <input type="date" id="from" aria-label="开始日期"/>
+      <span class="sep">—</span>
+      <input type="date" id="to" aria-label="结束日期"/>
+      <button class="navb" id="next" title="往后一天">›</button>
+    </div>
+    <div class="quick card">
+      <button data-quick="day">单日</button>
+      <button data-quick="7">最近7天</button>
+      <button data-quick="30">最近30天</button>
+      <button data-quick="month">本月</button>
+      <button data-quick="all">全部</button>
+    </div>
+    <div class="acts card">
+      <button class="ico" id="btnTheme" title="切换深色 / 浅色">☾</button>
+      <button class="ico" id="btnFit" title="缩放到全部轨迹">⌖</button>
+    </div>
+  </header>
+
+  <div id="basemaps" class="card"></div>
+
+  <nav id="rail" class="card">
+    <button data-panel="timeline" title="时间线 (T)">▤</button>
+    <button data-panel="calendar" title="日历 (C)">▦</button>
+    <button data-panel="stats" title="统计 (S)">▥</button>
+    <button data-panel="layers" title="图层 (L)">◈</button>
+    <button data-panel="import" title="导入 (I)">⇧</button>
+  </nav>
+
+  <aside id="side" class="card">
+    <div class="sidehead">
+      <h2 id="sideTitle">时间线</h2>
+      <button id="sideClose" title="关闭">×</button>
+    </div>
+    <div id="sideBody"></div>
+  </aside>
+
+  <div id="legend" class="card"></div>
+
+  <div id="welcome" class="card">
+    <h3>还没有载入轨迹</h3>
+    <p>把 .gpx / .fit 拖进窗口，或者选一批文件 / 一个 zip。<br>之后用顶部的日期范围看某一天或某几天。</p>
+    <label for="picker" data-pick="files">导入 GPX</label>
+  </div>
+
+  <div id="drop">松开鼠标，载入 GPX</div>
+  <div id="toast"></div>
+</div>
+
+<input id="picker" type="file" multiple class="hidden-file"/>
+<input id="dirpicker" type="file" multiple webkitdirectory directory class="hidden-file"/>
+<input id="zippicker" type="file" multiple class="hidden-file"/>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" data-vendor="leaflet.js"></script>
+<script src="core.js" data-vendor="core.js"></script>
+<script id="preset" type="application/json">null</script>
+<script>
+"use strict";
+const PALETTE = ["#5b9dff","#3ddc97","#f5b942","#ff6b6b","#a78bfa","#22d3ee","#fb923c","#f472b6","#84cc16","#38bdf8","#e879f9","#facc15","#2dd4bf","#c084fc"];
+const WEEK = ["周日","周一","周二","周三","周四","周五","周六"];
+const SUB = ["1","2","3","4"];
+const BASEMAPS = [
+  {id:"amap", name:"高德", url:"https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", maxZoom:18, gcj:true,  attr:"&copy; 高德地图"},
+  {id:"sat",  name:"卫星", url:"https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}", maxZoom:18, gcj:true,  attr:"&copy; 高德地图"},
+  {id:"arc",  name:"街道(原始)", url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", maxZoom:17, gcj:false, attr:"&copy; Esri"}
+];
+const CACHE_KEY = "gpxviewer.cache.v2";
+const UI_KEY = "gpxviewer.ui.v1";
+
+const state = {
+  trips:[], batches:[], days:[], byKey:new Map(), sel:new Set(),
+  range:{from:"",to:""}, rangeTouched:false, cal:{y:0,m:0},
+  opts:{lines:true, points:false, heat:false, ends:false, speed:false},
+  theme:"dark", baseId:"amap", darkTiles:true, gcj:true,
+  map:null, drawn:[], heatCanvas:null, base:null, fitted:false, panel:""
+};
+const _dayColors=new Map();   // 日期 -> 颜色，避免每次 findIndex
+
+/* ---------- 通用 ---------- */
+const pad = n => String(n).padStart(2,"0");
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmtDist(m){ if(!isFinite(m)||m<=0) return "—"; return m>=1000 ? (m/1000).toFixed(m>=10000?0:1)+" km" : Math.round(m)+" m"; }
+function haversine(a,b){
+  const R=6371000, rad=Math.PI/180;
+  const dLat=(b[0]-a[0])*rad, dLon=(b[1]-a[1])*rad;
+  const s=Math.sin(dLat/2)**2 + Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function toast(msg, ms){
+  const el=document.getElementById("toast");
+  el.textContent=msg; el.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>el.classList.remove("on"), ms||2800);
+}
+const PI=Math.PI, AXIS=6378245.0, EE=0.00669342162296594323;
+function outOfChina(lat,lon){ return !(lon>73.66 && lon<135.05 && lat>3.86 && lat<53.55); }
+function tLat(x,y){
+  let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+  r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;
+  r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;
+  return r;
+}
+function tLon(x,y){
+  let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+  r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;
+  r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;
+  return r;
+}
+function wgs2gcj(lat,lon){
+  if(outOfChina(lat,lon)) return [lat,lon];
+  let dLat=tLat(lon-105,lat-35), dLon=tLon(lon-105,lat-35);
+  const radLat=lat/180*PI;
+  let magic=Math.sin(radLat); magic=1-EE*magic*magic;
+  const sq=Math.sqrt(magic);
+  dLat=(dLat*180)/((AXIS*(1-EE))/(magic*sq)*PI);
+  dLon=(dLon*180)/(AXIS/sq*Math.cos(radLat)*PI);
+  return [lat+dLat, lon+dLon];
+}
+function project(seg){
+  if(!state.gcj) return seg;
+  if(!seg._g) seg._g = seg.map(p=>wgs2gcj(p[0],p[1]));
+  return seg._g;
+}
+
+/* ---------- 解析（与经典版同构，按轨迹点的时间切天） ---------- */
+function parseDateKey(raw){
+  const s=String(raw||"");
+  let m=s.match(/(20\d{2})[-_.\/\s年](\d{1,2})[-_.\/\s月](\d{1,2})/);
+  if(!m) m=s.match(/(20\d{2})(\d{2})(\d{2})/);
+  if(!m) return null;
+  const y=+m[1], mo=+m[2], d=+m[3];
+  if(mo<1||mo>12||d<1||d>31) return null;
+  return y+"-"+pad(mo)+"-"+pad(d);
+}
+const localKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+function hhmm(iso){
+  if(!iso) return "";
+  const d=new Date(iso);
+  return isNaN(d) ? "" : pad(d.getHours())+":"+pad(d.getMinutes());
+}
+function collectPts(parent, tag){
+  const out=[], nodes=parent.getElementsByTagName(tag);
+  for(let i=0;i<nodes.length;i++){
+    const p=nodes[i];
+    const lat=parseFloat(p.getAttribute("lat")), lon=parseFloat(p.getAttribute("lon"));
+    if(!isFinite(lat)||!isFinite(lon)) continue;
+    const tn=p.getElementsByTagName("time")[0];
+    out.push([lat,lon,tn?tn.textContent.trim():""]);
+  }
+  return out;
+}
+function splitByDay(pts){
+  const keys = pts.map(p=>{
+    if(!p[2]) return null;
+    const d = new Date(p[2]);
+    if(isNaN(d)) return null;
+    const y=d.getFullYear();
+    if(y<2000 || y>new Date().getFullYear()+1) return null;
+    return localKey(d);
+  });
+  for(let i=1;i<keys.length;i++) if(!keys[i]) keys[i]=keys[i-1];
+  for(let i=keys.length-2;i>=0;i--) if(!keys[i]) keys[i]=keys[i+1];
+  const out=[]; let cur=null;
+  pts.forEach((p,i)=>{
+    const k=keys[i];
+    if(!cur || cur.key!==k){
+      cur={key:k, pts:[[p[0],p[1]]], lead:(i>0?[pts[i-1][0],pts[i-1][1]]:null), t0:p[2]||"", t1:p[2]||""};
+      out.push(cur);
+    }else{
+      cur.pts.push([p[0],p[1]]);
+      if(p[2]){
+        if(!cur.t0 || p[2]<cur.t0) cur.t0=p[2];
+        if(!cur.t1 || p[2]>cur.t1) cur.t1=p[2];
+      }
+    }
+  });
+  return out;
+}
+function parseGpx(text, fileName){
+  let doc;
+  try{ doc=new DOMParser().parseFromString(text,"application/xml"); }catch(e){ return null; }
+  if(!doc || doc.getElementsByTagName("parsererror").length) return null;
+  const raw=[];
+  const trks=doc.getElementsByTagName("trk");
+  for(let i=0;i<trks.length;i++){
+    const t=trks[i], nm=t.getElementsByTagName("name")[0];
+    const tn=nm?nm.textContent.trim():"";
+    const segNodes=t.getElementsByTagName("trkseg");
+    for(let j=0;j<segNodes.length;j++){
+      const p=collectPts(segNodes[j],"trkpt");
+      if(p.length) raw.push({name:tn, pts:p});
+    }
+  }
+  const rtes=doc.getElementsByTagName("rte");
+  for(let i=0;i<rtes.length;i++){
+    const p=collectPts(rtes[i],"rtept");
+    if(p.length){
+      const nm=rtes[i].getElementsByTagName("name")[0];
+      raw.push({name:nm?nm.textContent.trim():"", pts:p});
+    }
+  }
+  if(!raw.length) return null;
+  const buckets=new Map();
+  raw.forEach(rs=>{
+    splitByDay(rs.pts).forEach(part=>{
+      const k=part.key||"";
+      if(!buckets.has(k)) buckets.set(k,{segs:[],times:[],name:""});
+      const b=buckets.get(k);
+      if(part.pts.length) b.segs.push(part.lead ? {pts:[part.lead].concat(part.pts), skip:1} : {pts:part.pts, skip:0});
+      if(part.t0) b.times.push(part.t0);
+      if(part.t1) b.times.push(part.t1);
+      if(!b.name && rs.name) b.name=rs.name;
+    });
+  });
+  const keyFile=parseDateKey(fileName);
+  const baseName=fileName.replace(/\.gpx$/i,"");
+  const pieces=[];
+  buckets.forEach((b,k)=>{
+    let dist=0,n=0;
+    b.segs.forEach(sg=>{
+      const p=sg.pts;
+      n+=p.length-(sg.skip?1:0);
+      for(let i=1;i<p.length;i++) dist+=haversine(p[i-1],p[i]);
+    });
+    const ts=b.times.slice().sort();
+    pieces.push({
+      keyTime:k||null, keyFile:keyFile, file:fileName,
+      name:b.name||baseName, segs:b.segs.map(sg=>sg.pts), dist:dist, pts:n,
+      start: ts.length?hhmm(ts[0]):"", end: ts.length?hhmm(ts[ts.length-1]):"",
+      t0: ts.length?ts[0]:""
+    });
+  });
+  pieces.sort((a,b)=> (a.t0||"~")<(b.t0||"~")?-1:1);
+  const firstDay = pieces.length ? pieces[0].keyTime : null;
+  pieces.forEach((it,i)=>{ it.part=i+1; it.parts=pieces.length; it.keyStart=firstDay; });
+  return pieces;
+}
+
+/* ---------- 分组 ---------- */
+function pieceKey(it){ return it.keyTime || it.keyFile || it.keyStart || "未标注日期"; }
+function daySort(a,b){
+  const av=/^\d{4}-\d{2}-\d{2}$/.test(a.key), bv=/^\d{4}-\d{2}-\d{2}$/.test(b.key);
+  if(av!==bv) return av?-1:1;
+  return a.key<b.key?1:a.key>b.key?-1:0;
+}
+function regroup(){
+  const m=new Map();
+  _dayColors.clear();   // 日期顺序变了，配色缓存作废
+  state.trips.forEach(it=>{
+    const k=pieceKey(it);
+    if(!m.has(k)) m.set(k,{key:k, items:[], dist:0, pts:0});
+    m.get(k).items.push(it);
+  });
+  state.days=[...m.values()].sort(daySort);
+  state.byKey=m;
+  state.days.forEach(d=>{
+    d.items.sort((a,b)=> (a.start||"")<(b.start||"")?-1:1);
+    d.dist=d.items.reduce((a,it)=>a+(it.dist||0),0);
+    d.pts=d.items.reduce((a,it)=>a+(it.pts||0),0);
+  });
+  const keys=new Set(state.days.map(d=>d.key));
+  [...state.sel].forEach(k=>{ if(!keys.has(k)) state.sel.delete(k); });
+}
+function fileCount(){ return new Set(state.trips.map(t=>t.file)).size; }
+function lastFileName(){
+  for(let i=state.batches.length-1;i>=0;i--){
+    const f=state.batches[i] && state.batches[i].files;
+    if(f && f.length){ const s=f.slice().sort(); return s[s.length-1]; }
+  }
+  const all=state.trips.map(t=>t.file).sort();
+  return all.length ? all[all.length-1] : "";
+}
+function addTrips(pieces){
+  const files=new Set(pieces.map(p=>p.file));
+  state.trips=state.trips.filter(t=>!files.has(t.file));
+  pieces.forEach(p=>state.trips.push(p));
+}
+
+/* ---------- 时间范围 ---------- */
+function rangeDays(){
+  const {from,to}=state.range;
+  return state.days.filter(d=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d.key)) return !from && !to;
+    if(from && d.key<from) return false;
+    if(to && d.key>to) return false;
+    return true;
+  });
+}
+function dateAdd(key, n){
+  const d=new Date(key+"T12:00:00"); d.setDate(d.getDate()+n); return localKey(d);
+}
+function initialRange(){
+  const keys=state.days.map(d=>d.key).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  if(!keys.length) return {from:"",to:""};
+  const to=keys[keys.length-1];
+  const from=dateAdd(to,-6);
+  // 最近 7 天里几乎没数据时（比如打开的是很久以前打包好的页面），
+  // 改成从最近第 7 个「有轨迹的日子」起算，免得一进来只看到孤零零一天
+  if(keys.filter(k=>k>=from && k<=to).length>=2) return {from:from,to:to};
+  return {from:keys[Math.max(0,keys.length-7)],to:to};
+}
+function setRange(from, to, quiet){
+  state.range={from:from||"",to:to||""};
+  if(!quiet) state.rangeTouched=true;
+  document.getElementById("from").value=state.range.from;
+  document.getElementById("to").value=state.range.to;
+  state.sel=new Set(rangeDays().map(d=>d.key));
+  state.fitted=false;
+  if(!quiet){ renderTop(); renderPanel(); renderLegend(); renderMap(true); }
+  updateQuick();
+}
+function updateQuick(){
+  const {from,to}=state.range;
+  let hit="";
+  if(!from && !to) hit="all";
+  else if(from && from===to) hit="day";
+  else if(from && to){
+    const now=new Date(), t=localKey(now);
+    if(to===t && from===dateAdd(t,-6)) hit="7";
+    else if(to===t && from===dateAdd(t,-29)) hit="30";
+    else if(from===localKey(new Date(now.getFullYear(),now.getMonth(),1))) hit="month";
+  }
+  document.querySelectorAll("[data-quick]").forEach(b=>b.classList.toggle("on", b.dataset.quick===hit));
+}
+function quickRange(kind){
+  const keys=state.days.map(d=>d.key).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)).sort();
+  const last=keys.length?keys[keys.length-1]:localKey(new Date());
+  const now=new Date(), t=localKey(now);
+  if(kind==="all") setRange("","");
+  else if(kind==="day") setRange(last,last);
+  else if(kind==="7") setRange(dateAdd(t,-6),t);
+  else if(kind==="30") setRange(dateAdd(t,-29),t);
+  else if(kind==="month") setRange(localKey(new Date(now.getFullYear(),now.getMonth(),1)), t);
+}
+function shiftRange(n){
+  const {from,to}=state.range;
+  if(!from && !to){
+    const keys=state.days.map(d=>d.key).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)).sort();
+    const last=keys.length?keys[keys.length-1]:localKey(new Date());
+    const k=dateAdd(last,n);
+    setRange(k,k);
+    return;
+  }
+  setRange(dateAdd(from||to,n), dateAdd(to||from,n));
+}
+function toggleDay(key){
+  if(state.sel.has(key)) state.sel.delete(key); else state.sel.add(key);
+  state.fitted=false;
+  renderPanel(); renderLegend(); renderMap(true);
+}
+
+/* ---------- 缓存 ---------- */
+function saveUI(){
+  try{ localStorage.setItem(UI_KEY, JSON.stringify({
+    theme:state.theme, opts:state.opts, baseId:state.baseId, darkTiles:state.darkTiles
+  })); }catch(e){}
+}
+function loadUI(){
+  try{
+    const d=JSON.parse(localStorage.getItem(UI_KEY)||"null");
+    if(!d) return;
+    if(d.theme==="light"||d.theme==="dark") state.theme=d.theme;
+    if(d.opts) Object.assign(state.opts, d.opts);
+    if(d.baseId) state.baseId=d.baseId;
+    if(typeof d.darkTiles==="boolean") state.darkTiles=d.darkTiles;
+  }catch(e){}
+}
+function saveCache(){
+  try{
+    const trips=state.trips.map(t=>{
+      const segs=t.segs.map(sg=>TRACK.packSeg(sg));
+      return [t.file,t.keyTime,t.keyFile,t.keyStart,t.name,Math.round((t.dist||0)*10)/10,
+              t.pts|0,t.start||"",t.end||"",t.part||1,t.parts||1,segs];
+    });
+    const data=JSON.stringify({v:3, mode:"time", sel:[], range:state.range,
+      batches:state.batches.map(b=>({files:b.files,added:b.added,dup:b.dup})), trips:trips});
+    if(data.length>3.2e6){
+      try{ localStorage.removeItem(CACHE_KEY); }catch(_){}
+      return false;                       // 容量不够，交给导入流程提示导出快照
+    }
+    localStorage.setItem(CACHE_KEY,data);
+    // 有些浏览器 / 网盘临时目录会「写成功但不持久化」，读回校验一次
+    return localStorage.getItem(CACHE_KEY)===data;
+  }catch(e){ return false; }
+}
+function loadCache(){
+  try{
+    const raw=localStorage.getItem(CACHE_KEY);
+    if(!raw) return null;
+    const d=JSON.parse(raw);
+    if(!d || !d.trips || !d.trips.length) return null;
+    state.trips=d.trips.map(a=>{
+      const segs=a[11].map(flat=>{
+        if(d.v===3) return TRACK.unpackSeg(flat);
+        const pts=[];
+        for(let i=0;i<flat.length;i+=2) pts.push([flat[i],flat[i+1]]);
+        return pts;
+      });
+      return {file:a[0],keyTime:a[1],keyFile:a[2],keyStart:a[3],name:a[4],dist:a[5],
+              pts:a[6],start:a[7],end:a[8],part:a[9],parts:a[10],segs:segs,t0:""};
+    });
+    state.batches=(d.batches||[]).map(b=>({files:b.files||[],added:b.added||0,dup:b.dup||0}));
+    return ("range" in d) ? (d.range || {from:"",to:""}) : null;
+  }catch(e){ return null; }
+}
+
+/* ---------- 导入 ---------- */
+let busy=false;
+const PICKERS={
+  files:{id:"picker",multi:true},
+  zip:{id:"zippicker",multi:true},
+  dir:{id:"dirpicker",multi:true,dir:true}
+};
+function freshPicker(kind){
+  const cfg=PICKERS[kind]; if(!cfg) return null;
+  const old=document.getElementById(cfg.id);
+  const el=document.createElement("input");
+  el.type="file"; el.id=cfg.id; el.className="hidden-file";
+  if(cfg.multi) el.setAttribute("multiple","");
+  if(cfg.dir){ el.setAttribute("webkitdirectory",""); el.setAttribute("directory",""); }
+  el.addEventListener("change",()=>{
+    const files=[...el.files];
+    if(!files.length) return;
+    setTimeout(()=>{ if(document.getElementById(cfg.id)===el) freshPicker(kind); },0);
+    if(kind==="dir" && !files.some(f=>f.webkitRelativePath)) toast("这个浏览器不支持选文件夹，已按普通文件处理",3200);
+    handleFiles(files).catch(err=>console.error(err));
+  });
+  if(old && old.parentNode) old.parentNode.replaceChild(el,old);
+  else document.body.appendChild(el);
+  return el;
+}
+async function handleFiles(fileList){
+  if(busy){ toast("还在读取上一批，稍等一下…",2000); return; }
+  const all=[...fileList];
+  if(!all.length) return;
+  const tracks=all.filter(f=>TRACK.isTrack(f.name));
+  const zips=all.filter(f=>TRACK.isZip(f.name,f.type));
+  if(!tracks.length && !zips.length){
+    alert("这 "+all.length+" 个文件里没有 .gpx / .fit / .zip。"); return;
+  }
+  busy=true;
+  const t0=performance.now();
+  const sub=document.getElementById("topsub");
+  const out=[], total=tracks.length+zips.length;
+  let fail=0, done=0, lastPaint=0;
+  const progress=label=>{
+    const now=performance.now();
+    if(now-lastPaint>90){ lastPaint=now; sub.textContent=label+" "+done+" / "+total; }
+  };
+  const parseOne=(bytes,name)=>{
+    let arr=null;
+    try{ arr=TRACK.parseAny(bytes,name); }catch(e){}
+    // 快速路径没认出来时，退回到 DOMParser 版本，兼容非标准 GPX
+    if(!arr && /\.gpx$/i.test(name)){
+      try{ arr=parseGpx(TRACK.decode(bytes),name); }catch(e){}
+    }
+    if(arr && arr.length) out.push(...arr); else fail++;
+  };
+
+  const CHUNK=16;
+  for(let i=0;i<tracks.length;i+=CHUNK){
+    const group=tracks.slice(i,i+CHUNK);
+    const bufs=await Promise.all(group.map(f=>TRACK.read(f).catch(()=>null)));
+    for(let k=0;k<group.length;k++){
+      if(bufs[k]) parseOne(bufs[k],group[k].name); else fail++;
+      done++;
+    }
+    progress("读取");
+    await TRACK.yieldUI();
+  }
+
+  for(const z of zips){
+    sub.textContent="解压 "+z.name+" …";
+    let items;
+    try{ items=await TRACK.unzip(await z.arrayBuffer()); }
+    catch(err){ fail++; done++; alert(z.name+" 解压失败："+err.message); continue; }
+    for(let k=0;k<items.length;k++){
+      parseOne(items[k].bytes,items[k].name);
+      if(k%32===0){ sub.textContent="解压 "+z.name+"　"+(k+1)+" / "+items.length; await TRACK.yieldUI(); }
+    }
+    done++;
+  }
+
+  busy=false;
+  if(!out.length){ alert(TRACK.noDataMessage(zips,tracks)); renderTop(); return; }
+  const before=new Set(state.trips.map(t=>t.file));
+  const names=[...new Set(out.map(p=>p.file))];
+  const added=names.filter(n=>!before.has(n)).length;
+  addTrips(out);
+  state.batches.push({at:Date.now(), files:names, added:added, dup:names.length-added});
+  regroup();
+  // 第一次导入时还没有时间范围，自动定位到最近 7 天；之后保留用户选的范围
+  if(!state.rangeTouched && !state.range.from && !state.range.to){
+    const r=initialRange();
+    setRange(r.from, r.to, true);
+  }else{
+    setRange(state.range.from, state.range.to, true);
+  }
+  state.fitted=false;
+  renderTop(); renderPanel(); renderLegend(); renderMap(true); renderWelcome();
+  const cachedOk=saveCache();
+  const sec=((performance.now()-t0)/1000).toFixed(1);
+  toast("本批 "+names.length+" 个文件：新增 "+added+
+        (added<names.length?"，重复 "+(names.length-added):"")+
+        (fail?"，"+fail+" 个没解析出轨迹":"")+"　用时 "+sec+" 秒"+
+        (cachedOk?"":"　本地缓存没存住（刷新会丢），请点「导出单文件 HTML」存成文件"),4800);
+  if(fail) console.warn("有 "+fail+" 个文件没解析出轨迹");
+}
+
+/* ---------- 地图 ---------- */
+function speedColor(it){
+  const s=it.start, e=it.end;
+  if(!s||!e) return "#5b9dff";
+  const m=t=>{ const a=String(t).split(":"); return (+a[0])*60+(+a[1]); };
+  let d=m(e)-m(s); if(d<=0) d+=1440;
+  const v=(it.dist||0)/1000/(d/60);
+  return v<6 ? "#3ddc97" : v<25 ? "#f5b942" : "#ff6b6b";
+}
+function dayColor(key){
+  let c=_dayColors.get(key);
+  if(c) return c;
+  const i=state.days.findIndex(d=>d.key===key);
+  c=PALETTE[(i<0?0:i)%PALETTE.length];
+  _dayColors.set(key,c);
+  return c;
+}
+function clearDrawn(){
+  state.drawn.forEach(l=>{ try{ state.map.removeLayer(l); }catch(e){} });
+  state.drawn=[];
+}
+function heatStops(){
+  return [[0,[59,130,246]],[.35,[34,211,238]],[.6,[250,204,21]],[.8,[249,115,22]],[1,[239,68,68]]];
+}
+function heatColor(t){
+  const s=heatStops();
+  for(let i=1;i<s.length;i++){
+    if(t<=s[i][0]){
+      const a=s[i-1], b=s[i], f=(t-a[0])/(b[0]-a[0]||1);
+      return [0,1,2].map(k=>Math.round(a[1][k]+(b[1][k]-a[1][k])*f));
+    }
+  }
+  return s[s.length-1][1];
+}
+function drawHeat(){
+  const c=state.heatCanvas;
+  if(!c) return;
+  if(!state.opts.heat){ c.style.display="none"; return; }
+  const size=state.map.getSize();
+  c.style.display="block";
+  c.width=size.x; c.height=size.y;
+  const tl=state.map.containerPointToLayerPoint([0,0]);
+  L.DomUtil.setPosition(c, tl);
+  const ctx=c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+  const pts=[];
+  const days=state.days.filter(d=>state.sel.has(d.key));
+  let total=0;
+  days.forEach(d=>d.items.forEach(it=>it.segs.forEach(sg=>{ total+=sg.length; })));
+  const step=Math.max(1, Math.ceil(total/12000));
+  let n=0;
+  days.forEach(d=>d.items.forEach(it=>it.segs.forEach(sg=>{
+    const pp=project(sg);
+    for(let i=0;i<pp.length;i++){
+      if((n++ % step)!==0) continue;
+      const p=state.map.latLngToContainerPoint(pp[i]);
+      if(p.x<-20||p.y<-20||p.x>c.width+20||p.y>c.height+20) continue;
+      pts.push([p.x,p.y]);
+    }
+  })));
+  const r=16;
+  for(let i=0;i<pts.length;i++){
+    const g=ctx.createRadialGradient(pts[i][0],pts[i][1],0,pts[i][0],pts[i][1],r);
+    g.addColorStop(0,"rgba(0,0,0,.30)");
+    g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(pts[i][0],pts[i][1],r,0,Math.PI*2); ctx.fill();
+  }
+  if(!pts.length) return;
+  const img=ctx.getImageData(0,0,c.width,c.height);
+  for(let i=0;i<img.data.length;i+=4){
+    const a=img.data[i+3];
+    if(!a) continue;
+    const t=Math.min(1, a/255*1.55);
+    const col=heatColor(t);
+    img.data[i]=col[0]; img.data[i+1]=col[1]; img.data[i+2]=col[2];
+    img.data[i+3]=Math.min(225, a*1.9);
+  }
+  ctx.putImageData(img,0,0);
+}
+function ensureHeatCanvas(){
+  if(state.heatCanvas) return state.heatCanvas;
+  const c=document.createElement("canvas");
+  c.className="heatcanvas";
+  state.map.getPanes().overlayPane.appendChild(c);
+  state.heatCanvas=c;
+  state.map.on("moveend zoomend resize", ()=>drawHeat());
+  return c;
+}
+function renderMap(force){
+  if(!state.map) return;
+  clearDrawn();
+  const all=[];
+  const days=state.days.filter(d=>state.sel.has(d.key));
+  days.forEach(d=>{
+    const base=dayColor(d.key);
+    d.items.forEach(it=>{
+      const color=state.opts.speed ? speedColor(it) : base;
+      it.segs.forEach(seg=>{
+        if(seg.length<2) return;
+        const pts=project(seg);
+        if(state.opts.lines){
+          const line=L.polyline(pts,{color:color,weight:3.4,opacity:.92,lineJoin:"round",lineCap:"round"});
+          const span=(it.start&&it.end)?it.start+"–"+it.end:"";
+          line.bindTooltip("<b>"+esc(d.key)+"</b> · "+esc(it.file)+"<br>"+fmtDist(it.dist)+
+            " · "+it.pts+" 点"+(span?" · "+span:""),{sticky:true});
+          line.addTo(state.map); state.drawn.push(line);
+        }
+        if(state.opts.points){
+          const step=Math.max(1,Math.ceil(seg.length/900));
+          for(let i=0;i<pts.length;i+=step){
+            const mk=L.circleMarker(pts[i],{radius:2.3,color:color,weight:1,fillColor:color,fillOpacity:.75});
+            mk.addTo(state.map); state.drawn.push(mk);
+          }
+        }
+        if(state.opts.ends){
+          const a=L.circleMarker(pts[0],{radius:4.6,color:"#fff",weight:1.5,fillColor:"#3ddc97",fillOpacity:1});
+          const b=L.circleMarker(pts[pts.length-1],{radius:4.6,color:"#fff",weight:1.5,fillColor:"#ff6b6b",fillOpacity:1});
+          a.bindTooltip("起点 · "+esc(d.key)); b.bindTooltip("终点 · "+esc(d.key));
+          a.addTo(state.map); b.addTo(state.map); state.drawn.push(a,b);
+        }
+        all.push(pts);
+      });
+    });
+  });
+  ensureHeatCanvas();
+  drawHeat();
+  if(all.length){
+    const b=L.latLngBounds([]);
+    all.forEach(s=>s.forEach(p=>b.extend(p)));
+    if(b.isValid() && (force || !state.fitted || state.sel.size===1)){
+      state.map.fitBounds(b,{padding:[36,36],maxZoom:17});
+      state.fitted=true;
+    }
+  }
+}
+function fitAll(){
+  state.fitted=false; renderMap(true);
+}
+function buildBaseButtons(){
+  const box=document.getElementById("basemaps");
+  box.innerHTML="";
+  BASEMAPS.forEach(b=>{
+    const btn=document.createElement("button");
+    btn.textContent=b.name; btn.dataset.base=b.id;
+    btn.addEventListener("click",()=>setBasemap(b.id));
+    box.appendChild(btn);
+  });
+}
+function applyDarkTiles(){
+  if(!state.map) return;
+  state.map.getContainer().classList.toggle("dark-tiles", state.darkTiles && state.baseId!=="sat");
+}
+function setBasemap(id){
+  const b=BASEMAPS.find(x=>x.id===id)||BASEMAPS[0];
+  if(state.base) state.map.removeLayer(state.base);
+  state.base=L.tileLayer(b.url,{subdomains:b.gcj?SUB:"abc",maxZoom:b.maxZoom,attribution:b.attr});
+  state.base.addTo(state.map);
+  state.baseId=b.id; state.gcj=b.gcj;
+  // 纠偏开关变了，之前缓存的投影坐标要作废
+  state.trips.forEach(t=>(t.segs||[]).forEach(s=>{ if(s._g) delete s._g; }));
+  [...document.querySelectorAll("#basemaps button")].forEach(x=>x.classList.toggle("on",x.dataset.base===b.id));
+  applyDarkTiles();
+  renderMap(); saveUI();
+  if(state.panel==="layers") renderPanel();
+}
+function applyTheme(){
+  document.body.classList.toggle("light", state.theme==="light");
+  document.getElementById("btnTheme").textContent = state.theme==="light" ? "☀" : "☾";
+}
+/* 顶栏在窄屏会换行，面板跟着它的实际高度走，避免压住顶栏 */
+function layoutOffset(){
+  const rail=document.getElementById("rail"), side=document.getElementById("side"), bm=document.getElementById("basemaps");
+  if(!rail||!side||!bm) return;
+  if(window.innerWidth<=820){ rail.style.top=""; side.style.top=""; bm.style.top=""; return; }
+  const h=document.getElementById("topbar").getBoundingClientRect().height;
+  rail.style.top=(h+18)+"px";
+  side.style.top=(h+18)+"px";
+  bm.style.top=(h+14)+"px";
+}
+function initMap(){
+  state.map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([35,105],4);
+  L.control.scale({imperial:false}).addTo(state.map);
+  buildBaseButtons();
+  setTimeout(()=>setBasemap(state.baseId),0);
+}
+
+/* ---------- 顶栏 / 图例 / 欢迎 ---------- */
+function renderTop(){
+  const days=rangeDays();
+  const shown=days.filter(d=>state.sel.has(d.key));
+  const dist=shown.reduce((a,d)=>a+d.dist,0);
+  document.getElementById("topsub").textContent = state.days.length
+    ? state.days.length+" 天 · 显示 "+shown.length+" 天 · "+fmtDist(dist)
+    : "轨迹时间线";
+  updateQuick();
+}
+function renderLegend(){
+  const box=document.getElementById("legend");
+  const days=state.days.filter(d=>state.sel.has(d.key));
+  if(!days.length){ box.style.display="none"; return; }
+  box.style.display="block";
+  const dist=days.reduce((a,d)=>a+d.dist,0);
+  let html="";
+  if(state.opts.speed){
+    html='<div class="lt">按平均速度着色</div>'+
+      '<div class="lg"><i class="sw" style="background:#3ddc97"></i>步行 / 骑行 &lt; 6 km/h</div>'+
+      '<div class="lg"><i class="sw" style="background:#f5b942"></i>中等速度</div>'+
+      '<div class="lg"><i class="sw" style="background:#ff6b6b"></i>快速 &gt; 25 km/h</div>';
+  }else{
+    html='<div class="lt">按日期着色</div>';
+    days.slice(0,6).forEach(d=>{
+      html+='<div class="lg"><i class="sw" style="background:'+dayColor(d.key)+'"></i>'+esc(d.key)+'</div>';
+    });
+    if(days.length>6) html+='<div class="lt" style="margin-top:4px">…另有 '+(days.length-6)+' 天</div>';
+  }
+  html+='<div class="tot">'+days.length+' 天 · '+fmtDist(dist)+'</div>';
+  box.innerHTML=html;
+}
+function renderWelcome(){
+  const w=document.getElementById("welcome");
+  w.style.display = state.days.length ? "none" : "block";
+}
+
+/* ---------- 面板 ---------- */
+const TITLES={timeline:"时间线", calendar:"日历", stats:"统计", layers:"图层", import:"导入"};
+/* 打开日历时，如果当前月份一条轨迹都没有，跳到最近有数据的月份 */
+function calJumpToData(){
+  const pre=state.cal.y+"-"+pad(state.cal.m+1);
+  if(state.days.some(d=>d.key.startsWith(pre))) return;
+  const keys=state.days.map(d=>d.key).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  if(!keys.length) return;
+  const k=keys[keys.length-1];
+  state.cal={y:+k.slice(0,4), m:+k.slice(5,7)-1};
+}
+function openPanel(p){
+  if(state.panel===p){ closePanel(); return; }
+  state.panel=p;
+  if(p==="calendar") calJumpToData();
+  document.getElementById("side").classList.add("on");
+  document.querySelectorAll("#rail button").forEach(b=>b.classList.toggle("on", b.dataset.panel===p));
+  document.getElementById("sideTitle").textContent=TITLES[p];
+  renderPanel();
+}
+function closePanel(){
+  state.panel="";
+  document.getElementById("side").classList.remove("on");
+  document.querySelectorAll("#rail button").forEach(b=>b.classList.remove("on"));
+}
+function renderPanel(){
+  const box=document.getElementById("sideBody");
+  if(!state.panel) return;
+  const p=state.panel;
+  document.getElementById("sideTitle").textContent=TITLES[p];
+  if(p==="timeline") renderTimeline(box);
+  else if(p==="calendar") renderCalendar(box);
+  else if(p==="stats") renderStats(box);
+  else if(p==="layers") renderLayers(box);
+  else if(p==="import") renderImport(box);
+}
+function weekOf(key){
+  const d=new Date(key+"T12:00:00");
+  return isNaN(d) ? "" : WEEK[d.getDay()];
+}
+function renderTimeline(box){
+  const days=rangeDays();
+  if(!days.length){
+    box.innerHTML='<div class="hint">这个时间范围里没有轨迹。<br>点顶部的「全部」或者打开日历挑一天。</div>';
+    return;
+  }
+  let html='<div class="sec">'+days.length+' 天 · 按日期倒序</div>';
+  days.forEach(d=>{
+    const color=dayColor(d.key), on=state.sel.has(d.key);
+    const withT=d.items.filter(it=>it.start);
+    const span=withT.length?withT[0].start+"–"+withT[withT.length-1].end:"";
+    const split=d.items.reduce((a,it)=>a+(it.parts>1?1:0),0);
+    html+='<div class="tcard'+(on?"":" off")+'" data-day="'+d.key+'">'+
+      '<input type="checkbox" data-check="'+d.key+'" '+(on?"checked":"")+' title="显示 / 隐藏这一天">'+
+      '<span class="bar" style="background:'+color+'"></span>'+
+      '<span class="m"><span class="d">'+esc(d.key)+'</span><span class="wk">'+weekOf(d.key)+'</span>'+
+      '<div class="s">'+d.items.length+' 条轨迹 · '+d.pts+' 点'+(span?" · "+span:"")+(split?" · 跨天拆分":"")+'</div></span>'+
+      '<span class="r">'+fmtDist(d.dist)+'</span></div>';
+  });
+  html+='<div class="rowacts"><button data-allshow>范围内全显</button><button data-clearshow>全部隐藏</button></div>'+
+        '<div class="hint" style="margin-top:10px">点一行只看这一天；勾选框可以单独加 / 减某一天，方便看不连续的几天。</div>';
+  box.innerHTML=html;
+}
+function calLevel(dist, max){
+  if(!dist) return 0;
+  const r=dist/(max||1);
+  return r<.2?1:r<.45?2:r<.75?3:4;
+}
+function renderCalendar(box){
+  const {y,m}=state.cal;
+  const first=new Date(y,m,1);
+  const startDow=(first.getDay()+6)%7;
+  const dim=new Date(y,m+1,0).getDate();
+  let max=0;
+  for(let i=1;i<=dim;i++){
+    const k=y+"-"+pad(m+1)+"-"+pad(i);
+    const d=state.byKey.get(k);
+    if(d && d.dist>max) max=d.dist;
+  }
+  const today=localKey(new Date());
+  let html='<div class="calhead"><div>'+
+    '<button data-calnav="-1">‹</button><button data-calnav="1">›</button><button data-calnav="0" class="w">今天</button>'+
+    '</div><b>'+y+" 年 "+pad(m+1)+" 月"+'</b></div>';
+  html+='<div class="calgrid">';
+  ["一","二","三","四","五","六","日"].forEach(w=>html+='<div class="caldow">'+w+'</div>');
+  for(let i=0;i<startDow;i++) html+='<div class="calcell blank"></div>';
+  for(let i=1;i<=dim;i++){
+    const k=y+"-"+pad(m+1)+"-"+pad(i);
+    const d=state.byKey.get(k);
+    const lv=d?calLevel(d.dist,max):0;
+    const inr=state.range.from&&state.range.to&&k>=state.range.from&&k<=state.range.to;
+    html+='<div class="calcell'+(d?" has l"+lv:"")+(inr?" inrange":"")+(k===today?" today":"")+'"'+
+      (d?' data-cal="'+k+'" title="'+k+" · "+fmtDist(d.dist)+'"':'')+'>'+i+'</div>';
+  }
+  html+='</div><div class="calcols">少 <i></i><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i> 多</div>';
+  let monthDist=0, monthDays=0;
+  for(let i=1;i<=dim;i++){
+    const k=y+"-"+pad(m+1)+"-"+pad(i), d=state.byKey.get(k);
+    if(d){ monthDist+=d.dist; monthDays++; }
+  }
+  html+='<div class="sec">本月概览</div>'+
+    '<div class="mini"><span>有轨迹的天数</span><b>'+monthDays+' 天</b></div>'+
+    '<div class="mini"><span>本月里程</span><b>'+fmtDist(monthDist)+'</b></div>'+
+    '<div class="rowacts"><button data-calmonth>只看本月</button></div>'+
+    '<div class="hint" style="margin-top:10px">点某天看单日；按住 Shift 再点另一天，可以选一段日期。颜色越深，那天走得越多。</div>';
+  box.innerHTML=html;
+}
+function renderStats(box){
+  const days=rangeDays();
+  const shown=days.filter(d=>state.sel.has(d.key));
+  const dist=days.reduce((a,d)=>a+d.dist,0);
+  const ntrips=days.reduce((a,d)=>a+d.items.length,0);
+  const npts=days.reduce((a,d)=>a+d.pts,0);
+  const active=days.filter(d=>d.dist>0).length;
+  const best=days.slice().sort((a,b)=>b.dist-a.dist)[0];
+  let html='<div class="sec">当前时间范围</div><div class="kpis">'+
+    '<div class="kpi"><span>有轨迹的天数</span><b>'+days.length+'<em>天</em></b></div>'+
+    '<div class="kpi"><span>总里程</span><b>'+fmtDist(dist)+'</b></div>'+
+    '<div class="kpi"><span>轨迹条数</span><b>'+ntrips+'<em>条</em></b></div>'+
+    '<div class="kpi"><span>轨迹点数</span><b>'+npts.toLocaleString()+'<em>点</em></b></div></div>';
+  html+='<div class="sec">近 12 个月</div>';
+  const byMonth=new Map();
+  state.days.forEach(d=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d.key)) return;
+    const k=d.key.slice(0,7);
+    byMonth.set(k,(byMonth.get(k)||0)+d.dist);
+  });
+  const months=[...byMonth.keys()].sort().slice(-12);
+  const mx=Math.max(1,...months.map(k=>byMonth.get(k)));
+  if(!months.length) html+='<div class="hint">还没有按月的统计。</div>';
+  months.forEach(k=>{
+    const v=byMonth.get(k);
+    html+='<div class="brow" data-month="'+k+'"><span class="bl">'+k+'</span>'+
+      '<span class="bt"><span class="bf" style="width:'+Math.max(2,Math.round(v/mx*100))+'%"></span></span>'+
+      '<span class="bv">'+fmtDist(v)+'</span></div>';
+  });
+  html+='<div class="sec">其他</div>'+
+    '<div class="mini"><span>当前显示</span><b>'+shown.length+' 天</b></div>'+
+    '<div class="mini"><span>平均每天（有轨迹日）</span><b>'+fmtDist(active?dist/active:0)+'</b></div>'+
+    '<div class="mini"><span>走得最多的一天</span><b>'+(best?best.key+" · "+fmtDist(best.dist):"—")+'</b></div>'+
+    '<div class="mini"><span>已导入文件</span><b>'+fileCount()+' 个</b></div>';
+  box.innerHTML=html;
+}
+function renderLayers(box){
+  const opts=[
+    ["lines","轨迹线","把每天的轨迹连成折线"],
+    ["points","轨迹点","显示 GPS 采样点"],
+    ["heat","热力图","按点密度染色"],
+    ["ends","起终点","标出每条轨迹的首尾"],
+    ["speed","按速度着色","绿慢 / 黄中 / 红快"]
+  ];
+  let html='<div class="sec">地图图层</div><div class="tiles">';
+  opts.forEach(o=>{
+    html+='<button class="ltile'+(state.opts[o[0]]?" on":"")+'" data-opt="'+o[0]+'">'+
+      '<b>'+o[1]+'</b><small>'+o[2]+'</small></button>';
+  });
+  html+='</div><div class="sec">底图</div><div class="pillrow">';
+  BASEMAPS.forEach(b=>html+='<button class="pill'+(state.baseId===b.id?" on":"")+'" data-base="'+b.id+'">'+b.name+'</button>');
+  html+='</div><div class="sec">外观</div><div class="pillrow">'+
+    '<button class="pill'+(state.theme==="dark"?" on":"")+'" data-theme="dark">深色</button>'+
+    '<button class="pill'+(state.theme==="light"?" on":"")+'" data-theme="light">浅色</button>'+
+    '<button class="pill'+(state.darkTiles?" on":"")+'" data-dark="1">暗色底图</button></div>'+
+    '<div class="hint" style="margin-top:14px">高德 / 腾讯底图是 GCJ-02，轨迹会自动纠偏；「街道(原始)」用 WGS84，不纠偏，适合境外轨迹。</div>';
+  box.innerHTML=html;
+}
+function renderImport(box){
+  const last=lastFileName();
+  let html='<div class="sec">导入轨迹</div><div class="impbtns">'+
+    '<label class="pri" for="picker" data-pick="files">选文件…</label>'+
+    '<label class="pri" for="zippicker" data-pick="zip">选 ZIP…</label>'+
+    '<label for="dirpicker" data-dirbtn data-pick="dir" class="wide">选文件夹…（仅电脑）</label></div>';
+  html+='<div class="hint" style="margin-bottom:10px">支持 .gpx 和 .fit（Garmin / Zepp 等）；FIT 只读 record 里的时间、经纬度，心率踏频等字段忽略。</div>';
+  html+='<div class="impstat">'+
+    '已导入 <b>'+fileCount()+'</b> 个文件'+(state.batches.length>1?"（"+state.batches.length+" 批）":"")+' · <b>'+state.days.length+'</b> 天'+
+    (last?'<br>上次选到 <b>'+esc(last)+'</b>':'')+
+    (state.batches.length?'<br>再点「选文件…」可接着追加，重复的会自动跳过':'')+
+    '</div>';
+  html+='<div class="sec">手机上怎么多选</div><div class="hint">'+
+    '长按第一个文件进入多选，再用系统的「全选」把整个文件夹一次选上；或者长按第一个后滑动到第 100 个再点一下，整段都能选上。<br>'+
+    '最省事的是把文件夹压成一个 zip，点「选 ZIP…」一次全导进来，zip 里的 .gpx 和 .fit 都会读。<br>'+
+    '每次点按钮都会换一个新的选择框，避免第二次打开退化成单选。'+
+    '</div>';
+  html+='<div class="sec">刷新后不想丢数据</div>'+
+    '<div class="hint">浏览器本地缓存有容量上限，放在网盘 / 临时目录里打开的页面还可能根本不给存。'+
+    '点下面的按钮把当前轨迹固化成一份自包含 HTML，存回网盘，以后打开就有数据，刷新也不会丢。</div>'+
+    '<div class="rowacts"><button data-export="1">导出单文件 HTML</button></div>';
+  html+='<button class="danger" data-clear="1">清空所有轨迹</button>'+
+    '<div class="hint" style="margin-top:10px">只清页面里的数据，不会动手机 / 电脑上的文件。</div>';
+  box.innerHTML=html;
+}
+const SNAPSHOT_CLEAN=["#map","#sideBody","#basemaps","#legend"];
+function exportSnapshot(){
+  if(!state.days.length){ toast("还没有轨迹可以导出"); return; }
+  const ok=TRACK.exportSnapshot(state.days,SNAPSHOT_CLEAN);
+  toast(ok ? "已导出「轨迹快照_日期.html」；把它存回网盘，以后打开就有数据，刷新也不会丢"
+           : "导出失败，请换 Chrome / Edge 再试", 5200);
+}
+function resetAll(){
+  if(!state.trips.length && !state.batches.length) return;
+  if(!confirm("清空所有已导入的轨迹？\n（只清这个页面里的数据，不会动你手机/电脑上的文件）")) return;
+  state.trips=[]; state.batches=[]; state.sel=new Set();
+  regroup(); setRange("","",true);
+  renderTop(); renderPanel(); renderLegend(); renderMap(true); renderWelcome(); saveCache();
+  toast("已清空");
+}
+
+/* ---------- 事件 ---------- */
+function bindUI(){
+  document.getElementById("rail").addEventListener("click",ev=>{
+    const b=ev.target.closest("[data-panel]"); if(b) openPanel(b.dataset.panel);
+  });
+  document.getElementById("sideClose").addEventListener("click",closePanel);
+  document.querySelector(".quick").addEventListener("click",ev=>{
+    const b=ev.target.closest("[data-quick]"); if(b) quickRange(b.dataset.quick);
+  });
+  document.getElementById("from").addEventListener("change",e=>{
+    let f=e.target.value, t=state.range.to;
+    if(t && f>t) t=f;
+    setRange(f,t);
+  });
+  document.getElementById("to").addEventListener("change",e=>{
+    let t=e.target.value, f=state.range.from;
+    if(f && t<f) f=t;
+    setRange(f,t);
+  });
+  document.getElementById("prev").addEventListener("click",()=>shiftRange(-1));
+  document.getElementById("next").addEventListener("click",()=>shiftRange(1));
+  document.getElementById("btnTheme").addEventListener("click",()=>{
+    state.theme = state.theme==="dark" ? "light" : "dark";
+    state.darkTiles = state.theme==="dark";
+    applyTheme(); applyDarkTiles(); saveUI();
+    if(state.panel==="layers") renderPanel();
+  });
+  document.getElementById("btnFit").addEventListener("click",fitAll);
+
+  // 面板里的所有交互（面板内容会重绘，用委托）
+  const body=document.getElementById("sideBody");
+  body.addEventListener("click",ev=>{
+    const t=ev.target;
+    const cal=t.closest("[data-cal]");
+    if(cal){
+      const k=cal.dataset.cal;
+      if(ev.shiftKey && state.range.from) setRange(
+        state.range.from<k?state.range.from:k,
+        state.range.from<k?k:state.range.from);
+      else setRange(k,k);
+      return;
+    }
+    const nav=t.closest("[data-calnav]");
+    if(nav){
+      const n=+nav.dataset.calnav;
+      if(n===0){ const d=new Date(); state.cal={y:d.getFullYear(),m:d.getMonth()}; }
+      else{ let m=state.cal.m+n, y=state.cal.y; if(m<0){m=11;y--;} if(m>11){m=0;y++;} state.cal={y:y,m:m}; }
+      renderPanel(); return;
+    }
+    if(t.closest("[data-calmonth]")){
+      const y=state.cal.y,m=state.cal.m;
+      setRange(y+"-"+pad(m+1)+"-01", y+"-"+pad(m+1)+"-"+pad(new Date(y,m+1,0).getDate()));
+      return;
+    }
+    const opt=t.closest("[data-opt]");
+    if(opt){ const k=opt.dataset.opt; state.opts[k]=!state.opts[k]; saveUI(); renderPanel(); renderMap(); return; }
+    const bs=t.closest("[data-base]"); if(bs){ setBasemap(bs.dataset.base); return; }
+    const th=t.closest("[data-theme]");
+    if(th){ state.theme=th.dataset.theme; state.darkTiles=state.theme==="dark"; applyTheme(); applyDarkTiles(); saveUI(); renderPanel(); return; }
+    const dk=t.closest("[data-dark]");
+    if(dk){ state.darkTiles=!state.darkTiles; applyDarkTiles(); saveUI(); renderPanel(); return; }
+    const mo=t.closest("[data-month]");
+    if(mo){ const k=mo.dataset.month; setRange(k+"-01", k+"-"+pad(new Date(+k.slice(0,4),+k.slice(5,7),0).getDate())); return; }
+    if(t.closest("[data-clear]")){ resetAll(); return; }
+    if(t.closest("[data-export]")){ exportSnapshot(); return; }
+    if(t.closest("[data-allshow]")){ rangeDays().forEach(d=>state.sel.add(d.key)); renderPanel(); renderLegend(); renderMap(true); return; }
+    if(t.closest("[data-clearshow]")){ state.sel.clear(); renderPanel(); renderLegend(); renderMap(); return; }
+    const card=t.closest("[data-day]");
+    if(card){ setRange(card.dataset.day, card.dataset.day); }
+  });
+  body.addEventListener("change",ev=>{
+    const cb=ev.target.closest("[data-check]");
+    if(cb){ toggleDay(cb.dataset.check); }
+  });
+  body.addEventListener("click",ev=>{
+    if(ev.target.closest("[data-check]")) ev.stopPropagation();
+  },true);
+
+  // 每次点选文件按钮都换新的 input（含动态生成的面板按钮）
+  const swap=ev=>{
+    const lb=ev.target && ev.target.closest ? ev.target.closest("[data-pick]") : null;
+    if(lb) freshPicker(lb.dataset.pick);
+  };
+  document.addEventListener("pointerdown",swap,true);
+  document.addEventListener("keydown",ev=>{
+    if(ev.key==="Enter"||ev.key===" ") swap(ev);
+  },true);
+  ["files","zip","dir"].forEach(freshPicker);
+
+  // 手机上安卓和 iOS 不支持选文件夹
+  try{
+    const ua=navigator.userAgent||"";
+    const mobile=/Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(ua);
+    const probe=document.createElement("input");
+    const noDir=!("webkitdirectory" in probe) && !("directory" in probe);
+    if(mobile||noDir) document.documentElement.classList.add("no-dir");
+  }catch(e){}
+
+  // 键盘快捷键
+  document.addEventListener("keydown",ev=>{
+    if(ev.target && /INPUT|TEXTAREA/.test(ev.target.tagName)) return;
+    if(ev.metaKey||ev.ctrlKey||ev.altKey) return;
+    const k=ev.key.toLowerCase();
+    const map={t:"timeline",c:"calendar",s:"stats",l:"layers",i:"import"};
+    if(map[k]){ openPanel(map[k]); ev.preventDefault(); }
+    else if(k==="escape") closePanel();
+    else if(k==="arrowleft") shiftRange(-1);
+    else if(k==="arrowright") shiftRange(1);
+  });
+
+  let depth=0;
+  const drop=document.getElementById("drop");
+  window.addEventListener("dragenter",e=>{ e.preventDefault(); depth++; drop.classList.add("on"); });
+  window.addEventListener("dragover",e=>e.preventDefault());
+  window.addEventListener("dragleave",()=>{ depth--; if(depth<=0){ depth=0; drop.classList.remove("on"); } });
+  window.addEventListener("drop",e=>{
+    e.preventDefault(); depth=0; drop.classList.remove("on");
+    if(e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+  window.addEventListener("resize",layoutOffset);
+  layoutOffset();
+  setTimeout(layoutOffset,200);
+}
+
+/* ---------- 启动 ---------- */
+function loadPreset(){
+  let preset=null;
+  try{ preset=JSON.parse(document.getElementById("preset").textContent||"null"); }catch(e){}
+  if(!preset || !preset.days || !preset.days.length) return false;
+  state.trips=[];
+  preset.days.forEach(d=>{
+    (d.items||[]).forEach(it=>{
+      it.segs=(it.segs||[]).map(s=>TRACK.decodeSeg(s));
+      it.dist=it.dist||0; it.pts=it.pts||0;
+      if(it.keyTime===undefined) it.keyTime = /^\d{4}-\d{2}-\d{2}$/.test(d.key) ? d.key : null;
+      if(it.keyFile===undefined) it.keyFile = parseDateKey(it.file||"");
+      if(!it.parts){ it.part=1; it.parts=1; }
+      if(!it.start) it.start="";
+      if(!it.end) it.end="";
+      state.trips.push(it);
+    });
+  });
+  return true;
+}
+window.addEventListener("error",ev=>{
+  const s=document.getElementById("topsub");
+  if(s && ev.message) s.textContent="出错了："+ev.message;
+});
+window.addEventListener("DOMContentLoaded",()=>{
+  if(typeof L==="undefined"){
+    document.getElementById("topsub").textContent="地图库没加载出来，请联网后刷新";
+    return;
+  }
+  loadUI(); applyTheme();
+  initMap(); bindUI();
+  const d=new Date(); state.cal={y:d.getFullYear(),m:d.getMonth()};
+
+  const preset=loadPreset();
+  const cached=preset?null:loadCache();
+  regroup();
+  if(preset || cached){
+    const r = cached ? cached : initialRange();
+    setRange(r.from||"", r.to||"", true);
+    if(!rangeDays().length) setRange("","",true);
+  }else{
+    setRange("","",true);
+  }
+  renderTop(); renderLegend(); renderWelcome(); renderMap(true);
+  if(window.innerWidth>820) openPanel(preset||cached ? "timeline" : "import");
+  else if(!(preset||cached)) openPanel("import");
+  if(cached) toast("已恢复上次导入的 "+fileCount()+" 个文件",3000);
+});
+</script>
+</body>
+</html>

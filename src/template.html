@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>GPX 轨迹查看器</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" data-vendor="leaflet.css"/>
+<style>
+:root{--bg:#f4f6f8;--panel:#fff;--line:#e2e6ec;--text:#1b1f26;--mute:#79828f;--accent:#1f6feb;--hover:#f0f4fa;--peek:74px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;font:14px/1.5 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;color:var(--text)}
+#app{display:flex;height:100%;background:var(--bg);position:relative}
+#panel{position:relative;width:340px;flex:0 0 340px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;z-index:1000}
+#head{padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+#head h1{margin:0 0 3px;font-size:15px;font-weight:600;letter-spacing:.2px}
+#stat{font-size:12px;color:var(--mute)}
+#stat2{display:none;margin-top:2px;font-size:11.5px;color:#8b93a0;line-height:1.5;word-break:break-all}
+#stat2.on{display:block}
+#stat2 b{color:#55606f;font-weight:500}
+#tools{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#tools button,#tools .toolbtn{flex:0 0 auto;padding:5px 10px;font-size:12px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer;color:#333;text-align:center;line-height:1.4}
+#tools button:hover,#tools .toolbtn:hover{border-color:var(--accent);color:var(--accent)}
+#tools .toolbtn{background:#eef4ff;border-color:#cfdffb;color:#1f4d9e}
+#tools .toolbtn:hover{background:#e2edff}
+#tools button.on{background:#eef4ff;border-color:#cfdffb;color:#1f4d9e;font-weight:500}
+#toast{position:absolute;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);background:rgba(28,36,50,.92);color:#fff;font-size:12.5px;padding:8px 15px;border-radius:8px;z-index:2600;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:80%;text-align:center;line-height:1.5}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.hidden-file{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;overflow:hidden}
+.more{padding:14px;text-align:center;font-size:12px;color:var(--mute)}
+.no-dir [data-dirbtn]{display:none !important}
+#search{margin:8px 14px 0}
+#search input{width:100%;padding:6px 9px;font-size:12px;border:1px solid var(--line);border-radius:6px;outline:none}
+#search input:focus{border-color:var(--accent)}
+#list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 0 40px}
+.day{border-bottom:1px solid #f1f3f6}
+.drow{display:flex;align-items:flex-start;gap:8px;padding:8px 14px;cursor:pointer;user-select:none}
+.drow:hover{background:var(--hover)}
+.drow input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex:0 0 auto;margin-top:3px}
+.ddate{font-weight:600;font-variant-numeric:tabular-nums;font-size:13.5px}
+.dsub{font-size:11.5px;color:var(--mute);margin-top:1px}
+.dmeta{margin-left:auto;text-align:right;font-size:11.5px;color:var(--mute);white-space:nowrap;padding-top:1px}
+.zoom{font-size:11px;color:var(--accent);cursor:pointer;padding:1px 5px;border-radius:4px;display:inline-block;margin-top:3px}
+.zoom:hover{background:#e8f0fe}
+.file{font-size:11px;color:#9aa3b0;padding:0 14px 6px 40px;line-height:1.65;word-break:break-all}
+.sw{display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 auto;margin-top:6px}
+#map{flex:1;min-width:0;background:#e6ebf1}
+#basemaps{position:absolute;top:10px;right:10px;z-index:900;display:flex;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 130px);gap:4px;background:rgba(255,255,255,.95);padding:4px;border-radius:9px;box-shadow:0 1px 8px rgba(0,0,0,.18)}
+#basemaps button{border:0;background:transparent;font-size:11.5px;padding:5px 8px;border-radius:6px;cursor:pointer;color:#3a4150;white-space:nowrap}
+#basemaps button.on{background:var(--accent);color:#fff}
+#drop{position:absolute;inset:0;background:rgba(31,111,235,.9);color:#fff;display:none;align-items:center;justify-content:center;font-size:18px;z-index:3000;pointer-events:none}
+#drop.on{display:flex}
+#empty{padding:36px 22px;text-align:center;color:var(--mute);font-size:13px;line-height:1.85}
+#empty b{color:var(--text);display:block;margin-bottom:8px;font-size:14px}
+#empty label{display:block;width:fit-content;margin:18px auto 0;padding:9px 20px;background:var(--accent);color:#fff;border-radius:7px;cursor:pointer;font-size:13px}
+#empty .ebtns{display:flex;gap:8px;justify-content:center;margin-top:18px}
+#empty .ebtns label{margin:0;display:inline-block;width:auto}
+#empty .ebtns label.ghost{background:#fff;color:var(--accent);border:1px solid #cfdffb}
+#empty input{display:none}
+#toggle{display:none;position:absolute;left:50%;transform:translateX(-50%);top:7px;width:44px;height:5px;border-radius:3px;background:#cfd6e0;border:0;padding:0;cursor:pointer;z-index:1300}
+@media (max-width:820px){
+  #app{flex-direction:column}
+  #panel{position:fixed;left:0;right:0;bottom:0;width:100%;flex:none;height:58vh;z-index:1100;border-right:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -6px 22px rgba(0,0,0,.13);transition:transform .22s ease;padding-bottom:env(safe-area-inset-bottom)}
+  #panel.hide{transform:translateY(calc(58vh - var(--peek)))}
+  #map{position:absolute;inset:0}
+  #toggle{display:block}
+  #head{padding:19px 14px 8px;border-radius:14px 14px 0 0}
+  #head h1{font-size:14px;margin-bottom:2px}
+  #stat{font-size:11.5px}
+  .leaflet-bottom{bottom:80px}
+  #basemaps{top:8px;right:8px;padding:3px;max-width:calc(100% - 96px)}
+  #basemaps button{font-size:11px;padding:4px 7px}
+  #tools{gap:5px;padding:9px 12px}
+  #tools button,#tools .toolbtn{font-size:11.5px;padding:4px 8px}
+  #stat2{font-size:11px}
+  #toast{top:12px;bottom:auto;font-size:12px;transform:translateX(-50%) translateY(-8px)}
+  #toast.on{transform:translateX(-50%) translateY(0)}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <button id="toggle" title="展开/收起列表"></button>
+    <div id="head">
+      <h1>GPX 轨迹查看器</h1>
+      <div id="stat">等待载入…</div>
+      <div id="stat2"></div>
+    </div>
+    <div id="tools">
+      <label class="toolbtn pri" for="picker" data-pick="files">选文件…</label>
+      <label class="toolbtn pri" for="zippicker" data-pick="zip">选 ZIP…</label>
+      <label class="toolbtn" for="dirpicker" data-dirbtn data-pick="dir">选文件夹…</label>
+      <button data-act="all">全选</button>
+      <button data-act="none">清空选择</button>
+      <button data-act="7">最近7天</button>
+      <button data-act="30">最近30天</button>
+      <button data-act="month">本月</button>
+      <button data-act="mode" id="modebtn" class="tog">分组：轨迹时间</button>
+      <button data-act="reset">清空轨迹</button>
+      <button data-act="snapshot">导出快照</button>
+    </div>
+    <div id="search"><input id="q" type="search" placeholder="按日期或文件名筛选，如 2025-03 / 0315"/></div>
+    <div id="list"></div>
+  </aside>
+  <div id="map"></div>
+  <div id="basemaps"></div>
+</div>
+<div id="drop">松开鼠标，载入 GPX</div>
+<div id="toast"></div>
+<input id="picker" type="file" multiple class="hidden-file"/>
+<input id="dirpicker" type="file" multiple webkitdirectory directory class="hidden-file"/>
+<input id="zippicker" type="file" class="hidden-file"/>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" data-vendor="leaflet.js"></script>
+<script src="core.js" data-vendor="core.js"></script>
+<script id="preset" type="application/json">null</script>
+<script>
+"use strict";
+const PALETTE = ["#e5484d","#1f6feb","#2a9d5c","#e08b00","#8e4ec6","#0d9488","#d6409f","#a16207","#2563eb","#be123c","#15803d","#7c3aed","#c2410c","#0369a1"];
+const WEEK = ["周日","周一","周二","周三","周四","周五","周六"];
+const SUB = ["1","2","3","4"];
+const BASEMAPS = [
+  {id:"amap",  name:"高德", url:"https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", maxZoom:18, gcj:true,  attr:"&copy; 高德地图"},
+  {id:"sat",   name:"卫星", url:"https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}", maxZoom:18, gcj:true,  attr:"&copy; 高德地图"},
+  {id:"arc",   name:"街道(原始)", url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", maxZoom:17, gcj:false, attr:"&copy; Esri"}
+];
+
+const state = { trips:[], batches:[], days:[], byKey:new Map(), sel:new Set(), map:null, layers:[], base:null, gcj:true, fitted:false, mode:"time" };
+
+/* ---------- 通用工具 ---------- */
+const pad = n => String(n).padStart(2,"0");
+function fmtDist(m){
+  if(!isFinite(m)||m<=0) return "—";
+  return m>=1000 ? (m/1000).toFixed(m>=10000?0:1)+" km" : Math.round(m)+" m";
+}
+function haversine(a,b){
+  const R=6371000, rad=Math.PI/180;
+  const dLat=(b[0]-a[0])*rad, dLon=(b[1]-a[1])*rad;
+  const s=Math.sin(dLat/2)**2 + Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+
+/* WGS84 -> GCJ02（高德/腾讯底图纠偏，GPS 轨迹直接叠国内底图会偏几百米） */
+const PI=Math.PI, AXIS=6378245.0, EE=0.00669342162296594323;
+function outOfChina(lat,lon){ return !(lon>73.66 && lon<135.05 && lat>3.86 && lat<53.55); }
+function tLat(x,y){
+  let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+  r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+  r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;
+  r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;
+  return r;
+}
+function tLon(x,y){
+  let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+  r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+  r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;
+  r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;
+  return r;
+}
+function wgs2gcj(lat,lon){
+  if(outOfChina(lat,lon)) return [lat,lon];
+  let dLat=tLat(lon-105,lat-35), dLon=tLon(lon-105,lat-35);
+  const radLat=lat/180*PI;
+  let magic=Math.sin(radLat); magic=1-EE*magic*magic;
+  const sq=Math.sqrt(magic);
+  dLat=(dLat*180)/((AXIS*(1-EE))/(magic*sq)*PI);
+  dLon=(dLon*180)/(AXIS/sq*Math.cos(radLat)*PI);
+  return [lat+dLat, lon+dLon];
+}
+function project(seg){
+  if(!state.gcj) return seg;
+  if(!seg._g) seg._g = seg.map(p=>wgs2gcj(p[0],p[1]));
+  return seg._g;
+}
+
+/* ---------- 解析 ---------- */
+function parseDateKey(raw){
+  const s=String(raw||"");
+  let m=s.match(/(20\d{2})[-_.\/\s年](\d{1,2})[-_.\/\s月](\d{1,2})/);
+  if(!m) m=s.match(/(20\d{2})(\d{2})(\d{2})/);
+  if(!m) return null;
+  const y=+m[1], mo=+m[2], d=+m[3];
+  if(mo<1||mo>12||d<1||d>31) return null;
+  return y+"-"+pad(mo)+"-"+pad(d);
+}
+const localKey = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+function hhmm(iso){
+  if(!iso) return "";
+  const d=new Date(iso);
+  return isNaN(d) ? "" : pad(d.getHours())+":"+pad(d.getMinutes());
+}
+function collectPts(parent, tag){
+  const out=[], nodes=parent.getElementsByTagName(tag);
+  for(let i=0;i<nodes.length;i++){
+    const p=nodes[i];
+    const lat=parseFloat(p.getAttribute("lat")), lon=parseFloat(p.getAttribute("lon"));
+    if(!isFinite(lat)||!isFinite(lon)) continue;
+    const tn=p.getElementsByTagName("time")[0];
+    out.push([lat,lon,tn?tn.textContent.trim():""]);
+  }
+  return out;
+}
+/* 按每个点自带的时间，把一条 segment 切成若干天 */
+function splitByDay(pts){
+  const keys = pts.map(p=>{
+    if(!p[2]) return null;
+    const d = new Date(p[2]);
+    if(isNaN(d)) return null;
+    // 设备没定位就写 1970 的那种时间，不当日期用
+    const y=d.getFullYear();
+    if(y<2000 || y>new Date().getFullYear()+1) return null;
+    return localKey(d);
+  });
+  // 没有时间的点，跟随相邻点所在的那天
+  for(let i=1;i<keys.length;i++) if(!keys[i]) keys[i]=keys[i-1];
+  for(let i=keys.length-2;i>=0;i--) if(!keys[i]) keys[i]=keys[i+1];
+  const out=[]; let cur=null;
+  pts.forEach((p,i)=>{
+    const k=keys[i];
+    if(!cur || cur.key!==k){
+      // 新的一段：把上一段的最后一个点带上，跨零点的线才不会断
+      cur={key:k, pts:[[p[0],p[1]]], lead:(i>0?[pts[i-1][0],pts[i-1][1]]:null), t0:p[2]||"", t1:p[2]||""};
+      out.push(cur);
+    }else{
+      cur.pts.push([p[0],p[1]]);
+      if(p[2]){
+        if(!cur.t0 || p[2]<cur.t0) cur.t0=p[2];
+        if(!cur.t1 || p[2]>cur.t1) cur.t1=p[2];
+      }
+    }
+  });
+  return out;
+}
+
+/* 解析一个 gpx，按轨迹里的实际时间切成「每天一段」，返回数组 */
+function parseGpx(text, fileName){
+  let doc;
+  try{ doc=new DOMParser().parseFromString(text,"application/xml"); }catch(e){ return null; }
+  if(!doc || doc.getElementsByTagName("parsererror").length) return null;
+
+  const raw=[];
+  const trks=doc.getElementsByTagName("trk");
+  for(let i=0;i<trks.length;i++){
+    const t=trks[i], nm=t.getElementsByTagName("name")[0];
+    const tn=nm?nm.textContent.trim():"";
+    const segNodes=t.getElementsByTagName("trkseg");
+    for(let j=0;j<segNodes.length;j++){
+      const p=collectPts(segNodes[j],"trkpt");
+      if(p.length) raw.push({name:tn, pts:p});
+    }
+  }
+  const rtes=doc.getElementsByTagName("rte");
+  for(let i=0;i<rtes.length;i++){
+    const p=collectPts(rtes[i],"rtept");
+    if(p.length){
+      const nm=rtes[i].getElementsByTagName("name")[0];
+      raw.push({name:nm?nm.textContent.trim():"", pts:p});
+    }
+  }
+  if(!raw.length) return null;
+
+  // 同一天的各段归到一个堆里
+  const buckets=new Map();
+  raw.forEach(rs=>{
+    splitByDay(rs.pts).forEach(part=>{
+      const k=part.key||"";
+      if(!buckets.has(k)) buckets.set(k,{segs:[],times:[],name:""});
+      const b=buckets.get(k);
+      if(part.pts.length) b.segs.push(part.lead ? {pts:[part.lead].concat(part.pts), skip:1} : {pts:part.pts, skip:0});
+      if(part.t0) b.times.push(part.t0);
+      if(part.t1) b.times.push(part.t1);
+      if(!b.name && rs.name) b.name=rs.name;
+    });
+  });
+
+  const keyFile=parseDateKey(fileName);
+  const baseName=fileName.replace(/\.gpx$/i,"");
+  const pieces=[];
+  buckets.forEach((b,k)=>{
+    let dist=0,n=0;
+    b.segs.forEach(sg=>{
+      const p=sg.pts;
+      n+=p.length-(sg.skip?1:0);   // 带过来的那个点不重复计数
+      for(let i=1; i<p.length; i++) dist+=haversine(p[i-1],p[i]);
+    });
+    const ts=b.times.slice().sort();
+    pieces.push({
+      keyTime:k||null, keyFile:keyFile, file:fileName,
+      name:b.name||baseName, segs:b.segs.map(sg=>sg.pts), dist:dist, pts:n,
+      start: ts.length?hhmm(ts[0]):"",
+      end:   ts.length?hhmm(ts[ts.length-1]):"",
+      t0: ts.length?ts[0]:""
+    });
+  });
+  pieces.sort((a,b)=> (a.t0||"~")<(b.t0||"~")?-1:1);
+  // 记下这个文件的第一天：文件名里没日期时，按文件名分组就拿它当总日期
+  const firstDay = pieces.length ? pieces[0].keyTime : null;
+  pieces.forEach((it,i)=>{ it.part=i+1; it.parts=pieces.length; it.keyStart=firstDay; });
+  return pieces;
+}
+
+/* ---------- 数据装填 / 分组 ---------- */
+/* 一段轨迹该归到哪一天：时间优先，没时间就退回文件名里的日期 */
+function pieceKey(it){
+  const t=it.keyTime, f=it.keyFile, s=it.keyStart;
+  // 按文件名：文件名日期 > 这个文件的第一天；按时间：时间 > 文件名日期
+  return state.mode==="file" ? (f||s||t||"未标注日期") : (t||f||"未标注日期");
+}
+function daySort(a,b){
+  const av=/^\d{4}-\d{2}-\d{2}$/.test(a.key), bv=/^\d{4}-\d{2}-\d{2}$/.test(b.key);
+  if(av!==bv) return av?-1:1;
+  return a.key<b.key?1:a.key>b.key?-1:0;
+}
+/* 按文件名分组时，同一天里同一文件的多个分段合成一条 */
+function mergeSameFile(items){
+  const m=new Map();
+  items.forEach(it=>{
+    const old=m.get(it.file);
+    if(!old){ m.set(it.file, Object.assign({},it,{segs:it.segs.slice(), part:1, parts:1})); return; }
+    old.segs=old.segs.concat(it.segs);
+    old.dist+=it.dist||0; old.pts+=it.pts||0;
+    if(it.start && (!old.start || it.start<old.start)) old.start=it.start;
+    if(it.end   && (!old.end   || it.end>old.end))     old.end=it.end;
+  });
+  return [...m.values()];
+}
+function regroup(){
+  const dayMap=new Map();
+  state.trips.forEach(it=>{
+    const k=pieceKey(it);
+    if(!dayMap.has(k)) dayMap.set(k,{key:k, items:[], dist:0, pts:0});
+    dayMap.get(k).items.push(it);
+  });
+  state.days=[...dayMap.values()].sort(daySort);
+  state.byKey=dayMap;
+  state.days.forEach(d=>{
+    if(state.mode==="file" && d.items.length>1) d.items=mergeSameFile(d.items);
+    d.items.sort((a,b)=> (a.start||"")<(b.start||"")?-1:1);
+    d.dist=d.items.reduce((a,it)=>a+(it.dist||0),0);
+    d.pts=d.items.reduce((a,it)=>a+(it.pts||0),0);
+  });
+  const keys=new Set(state.days.map(d=>d.key));
+  [...state.sel].forEach(k=>{ if(!keys.has(k)) state.sel.delete(k); });
+}
+function addTrips(pieces){
+  const files=new Set(pieces.map(p=>p.file));
+  // 同一个文件重新导入：先清掉它之前的所有分段，避免重复
+  state.trips=state.trips.filter(t=>!files.has(t.file));
+  pieces.forEach(p=>{ state.trips.push(p); state.sel.add(pieceKey(p)); });
+  regroup();
+  renderList(); renderMap(); updateStat();
+}
+
+/* ---------- 进度提示 / 缓存 ---------- */
+function esc(s){
+  return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+function toast(msg, ms){
+  const el=document.getElementById("toast");
+  if(!el){ return; }
+  el.textContent=msg;
+  el.classList.add("on");
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>el.classList.remove("on"), ms||2800);
+}
+function fileCount(){
+  return new Set(state.trips.map(t=>t.file)).size;
+}
+/* 上一次选到的文件名（按文件名排序的最后一个）：接着往下选的时候好找 */
+function lastFileName(){
+  for(let i=state.batches.length-1;i>=0;i--){
+    const f=state.batches[i] && state.batches[i].files;
+    if(f && f.length){ const s=f.slice().sort(); return s[s.length-1]; }
+  }
+  const all=state.trips.map(t=>t.file).sort();
+  return all.length ? all[all.length-1] : "";
+}
+const SNAPSHOT_CLEAN=["#map","#list","#basemaps","#batchbar","#bhist"];
+function exportSnapshot(){
+  if(!state.days.length){ toast("还没有轨迹可以导出"); return; }
+  const ok=TRACK.exportSnapshot(state.days,SNAPSHOT_CLEAN);
+  toast(ok ? "已导出「轨迹快照_日期.html」；把它存回网盘，以后打开就有数据，刷新也不会丢"
+           : "导出失败，请换 Chrome / Edge 再试", 5200);
+}
+function resetAll(){
+  if(!state.trips.length && !state.batches.length) return;
+  if(!confirm("清空所有已导入的轨迹？\n（只清这个页面里的数据，不会动你手机/电脑上的文件）")) return;
+  state.trips=[]; state.batches=[]; state.sel=new Set();
+  regroup();
+  renderList(true); renderMap(true); updateStat(); saveCache();
+  toast("已清空");
+}
+
+/* 存一份到浏览器本地：安卓返回文件选择器时页面偶尔会被回收，刷新后能接着来 */
+const CACHE_KEY="gpxviewer.cache.v2";
+function saveCache(){
+  try{
+    const trips=state.trips.map(t=>{
+      const segs=t.segs.map(sg=>TRACK.packSeg(sg));
+      return [t.file,t.keyTime,t.keyFile,t.keyStart,t.name,Math.round((t.dist||0)*10)/10,
+              t.pts|0,t.start||"",t.end||"",t.part||1,t.parts||1,segs];
+    });
+    const data=JSON.stringify({v:3,mode:state.mode,sel:[...state.sel],
+      batches:state.batches.map(b=>({files:b.files,added:b.added,dup:b.dup})), trips:trips});
+    if(data.length>3.2e6){
+      try{ localStorage.removeItem(CACHE_KEY); }catch(_){}
+      return false;                       // 容量不够，交给导入流程提示导出快照
+    }
+    localStorage.setItem(CACHE_KEY,data);
+    // 有些浏览器 / 网盘临时目录会「写成功但不持久化」，读回校验一次
+    return localStorage.getItem(CACHE_KEY)===data;
+  }catch(e){ return false; }
+}
+function loadCache(){
+  try{
+    const raw=localStorage.getItem(CACHE_KEY);
+    if(!raw) return false;
+    const d=JSON.parse(raw);
+    if(!d || !d.trips || !d.trips.length) return false;
+    state.trips=d.trips.map(a=>{
+      const segs=a[11].map(flat=>{
+        if(d.v===3) return TRACK.unpackSeg(flat);
+        const pts=[];
+        for(let i=0;i<flat.length;i+=2) pts.push([flat[i],flat[i+1]]);
+        return pts;
+      });
+      return {file:a[0], keyTime:a[1], keyFile:a[2], keyStart:a[3], name:a[4], dist:a[5],
+              pts:a[6], start:a[7], end:a[8], part:a[9], parts:a[10], segs:segs};
+    });
+    state.mode = d.mode==="file" ? "file" : "time";
+    state.batches = (d.batches||[]).map(b=>({files:b.files||[],added:b.added||0,dup:b.dup||0}));
+    regroup();
+    (d.sel||[]).forEach(k=>{ if(state.byKey.has(k)) state.sel.add(k); });
+    return true;
+  }catch(e){ return false; }
+}
+
+/* 切换分组依据，选中状态按文件找回 */
+function setMode(m){
+  if(m===state.mode) return;
+  const files=new Set();
+  state.days.forEach(d=>{ if(state.sel.has(d.key)) d.items.forEach(it=>files.add(it.file)); });
+  state.mode=m;
+  state.sel=new Set();
+  regroup();
+  state.days.forEach(d=>{
+    if(d.items.some(it=>files.has(it.file))) state.sel.add(d.key);
+  });
+  state.fitted=false;
+  updateModeBtn();
+  renderList(true); renderMap(true); updateStat();
+}
+function updateModeBtn(){
+  const b=document.getElementById("modebtn");
+  if(!b) return;
+  const time=state.mode!=="file";
+  b.textContent=time ? "分组：轨迹时间" : "分组：文件名";
+  b.classList.toggle("on", time);
+  b.title=time ? "现在按轨迹里的实际时间分组，点击改为按文件名里的日期"
+               : "现在按文件名里的日期分组，点击改为按轨迹里的实际时间";
+}
+let busy = false;
+
+/* ---------- 选文件：每次点都换一个全新的 input ----------
+   有的手机浏览器把上一次的选择状态留在 input 上，第二次打开就只剩单选、
+   只能一个一个点。点击时把 input 整个换成新的（id 不变，label 照旧指向它），
+   每次都从「干净的多选」开始。 */
+const PICKERS = {
+  files:{ id:"picker",    multi:true },
+  zip:  { id:"zippicker", multi:true },
+  dir:  { id:"dirpicker", multi:true, dir:true }
+};
+function freshPicker(kind){
+  const cfg = PICKERS[kind];
+  if(!cfg) return null;
+  const old = document.getElementById(cfg.id);
+  const el = document.createElement("input");
+  el.type = "file";
+  el.id = cfg.id;
+  el.className = "hidden-file";
+  if(cfg.multi) el.setAttribute("multiple","");
+  if(cfg.dir){ el.setAttribute("webkitdirectory",""); el.setAttribute("directory",""); }
+  el.addEventListener("change", ()=>{
+    const files = [...el.files];
+    if(!files.length) return;
+    // 选完就把这个 input 换掉，下次打开还是干净的多选
+    setTimeout(()=>{ if(document.getElementById(cfg.id) === el) freshPicker(kind); }, 0);
+    const isDir = kind === "dir";
+    // 浏览器忽略了 webkitdirectory 时会退回成普通多选，提醒一下
+    if(isDir && !files.some(f => f.webkitRelativePath)){
+      toast("这个浏览器不支持选文件夹，已按普通文件处理", 3200);
+    }
+    handleFiles(files).catch(err => console.error(err));
+  });
+  if(old && old.parentNode) old.parentNode.replaceChild(el, old);
+  else document.body.appendChild(el);
+  return el;
+}
+
+/* ---------- 导入：分块并发读取 + 快速解析，GPX / FIT / ZIP ---------- */
+async function handleFiles(fileList){
+  if(busy){ toast("还在读取上一批，稍等一下…", 2000); return; }
+  const all = [...fileList];
+  if(!all.length) return;
+  const tracks = all.filter(f => TRACK.isTrack(f.name));
+  const zips = all.filter(f => TRACK.isZip(f.name, f.type));
+  if(!tracks.length && !zips.length){
+    alert("这 " + all.length + " 个文件里没有 .gpx / .fit / .zip。");
+    return;
+  }
+  busy = true;
+  const t0 = performance.now();
+  const statEl = document.getElementById("stat");
+  const out = [], total = tracks.length + zips.length;
+  let fail = 0, done = 0, lastPaint = 0;
+  const progress = label => {
+    const now = performance.now();
+    if(now - lastPaint > 90){ lastPaint = now; statEl.textContent = label + " " + done + " / " + total; }
+  };
+  const parseOne = (bytes, name) => {
+    let arr = null;
+    try{ arr = TRACK.parseAny(bytes, name); }catch(e){}
+    // 快速路径没认出来时，退回到 DOMParser 版本，兼容非标准 GPX
+    if(!arr && /\.gpx$/i.test(name)){
+      try{ arr = parseGpx(TRACK.decode(bytes), name); }catch(e){}
+    }
+    if(arr && arr.length) out.push(...arr); else fail++;
+  };
+
+  const CHUNK = 16;
+  for(let i = 0; i < tracks.length; i += CHUNK){
+    const group = tracks.slice(i, i + CHUNK);
+    const bufs = await Promise.all(group.map(f => TRACK.read(f).catch(() => null)));
+    for(let k = 0; k < group.length; k++){
+      if(bufs[k]) parseOne(bufs[k], group[k].name); else fail++;
+      done++;
+    }
+    progress("读取");
+    await TRACK.yieldUI();
+  }
+
+  for(const z of zips){
+    statEl.textContent = "解压 " + z.name + " …";
+    let items;
+    try{ items = await TRACK.unzip(await z.arrayBuffer()); }
+    catch(err){ fail++; done++; alert(z.name + " 解压失败：" + err.message); continue; }
+    for(let k = 0; k < items.length; k++){
+      parseOne(items[k].bytes, items[k].name);
+      if(k % 32 === 0){ statEl.textContent = "解压 " + z.name + "　" + (k+1) + " / " + items.length; await TRACK.yieldUI(); }
+    }
+    done++;
+  }
+
+  busy = false;
+  if(!out.length){
+    alert(TRACK.noDataMessage(zips, tracks));
+    updateStat(); return;
+  }
+  const before=new Set(state.trips.map(t=>t.file));
+  const names=[...new Set(out.map(p=>p.file))];
+  const added=names.filter(n=>!before.has(n)).length;
+  addTrips(out);
+  state.batches.push({at:Date.now(), files:names, added:added, dup:names.length-added});
+  updateStat();
+  const cachedOk=saveCache();
+  const sec = ((performance.now() - t0) / 1000).toFixed(1);
+  toast("本批 "+names.length+" 个文件：新增 "+added+
+        (added<names.length ? "，重复 "+(names.length-added) : "")+
+        (fail ? "，"+fail+" 个没解析出轨迹" : "")+
+        "　用时 "+sec+" 秒"+
+        (cachedOk ? "" : "　本地缓存没存住（刷新会丢），请点「导出快照」存成文件"), 4800);
+  if(fail) console.warn("有 " + fail + " 个文件没解析出轨迹");
+}
+
+/* ---------- 列表 ---------- */
+function visibleDays(){
+  const q=document.getElementById("q").value.trim().toLowerCase();
+  if(!q) return state.days;
+  return state.days.filter(d=> d.key.toLowerCase().includes(q) ||
+    d.items.some(it=>(it.file+" "+it.name).toLowerCase().includes(q)));
+}
+let renderLimit = 60;
+function renderList(reset){
+  if(reset) renderLimit = 60;
+  const list=document.getElementById("list");
+  if(!state.days.length){
+    list.innerHTML='<div id="empty"><b>还没有载入轨迹</b>把 .gpx / .fit 拖进窗口，或者用下面的按钮选。<br>可以一批一批来：选完再点一次「选文件…」接着选，重复的会自动跳过。<br>手机上不方便反复勾选的话，把放轨迹的文件夹压成一个 zip，点「选 ZIP…」一次全导进来。'+
+      '<div class="ebtns"><label for="picker" data-pick="files">选文件</label><label for="zippicker" data-pick="zip" class="ghost">选 ZIP</label><label for="dirpicker" data-dirbtn data-pick="dir" class="ghost">选文件夹</label></div></div>';
+    return;
+  }
+  const days=visibleDays();
+  if(!days.length){ list.innerHTML='<div id="empty">没有匹配的日期</div>'; return; }
+
+  const frag=document.createDocumentFragment();
+  const idxMap=new Map();
+  state.days.forEach((d,i)=>idxMap.set(d.key,i));
+  days.slice(0, renderLimit).forEach(d=>{
+    const ii=idxMap.get(d.key);
+    const i=ii===undefined?0:ii;
+    const color=PALETTE[i%PALETTE.length];
+    const on=state.sel.has(d.key);
+    const dt = d.key.length===10 ? new Date(d.key+"T12:00:00") : null;
+    const wk = dt && !isNaN(dt) ? WEEK[dt.getDay()] : "";
+    const withT = d.items.filter(it=>it.start);
+    const span = withT.length ? withT[0].start+"–"+withT[withT.length-1].end : "";
+    const splitCnt = d.items.reduce((a,it)=>a+(it.parts>1?1:0),0);
+    const dsub = d.items.length+" 条轨迹"+(span?" · "+span:"")+(splitCnt?" · 跨天拆分":"") ;
+
+    const el=document.createElement("div");
+    el.className="day";
+    el.innerHTML=
+      '<div class="drow" data-key="'+d.key+'">'+
+        '<input type="checkbox" '+(on?"checked":"")+' data-check="'+d.key+'">'+
+        '<span class="sw" style="background:'+(on?color:"#c8ced8")+'"></span>'+
+        '<span style="flex:1;min-width:0">'+
+          '<div class="ddate">'+d.key+' <span style="font-weight:400;color:#8b93a0;font-size:11px">'+wk+'</span></div>'+
+          '<div class="dsub">'+dsub+'</div>'+
+        '</span>'+
+        '<span class="dmeta">'+fmtDist(d.dist)+'<br><span class="zoom" data-zoom="'+d.key+'">定位</span></span>'+
+      '</div>'+
+      ((d.items.length>1 || splitCnt)
+        ? '<div class="file">'+d.items.map(it=>{
+            const tag = it.parts>1 ? " ("+it.part+"/"+it.parts+" 天)" : "";
+            return it.file+tag+"  "+fmtDist(it.dist);
+          }).join("<br>")+'</div>'
+        : "");
+    frag.appendChild(el);
+  });
+  if(days.length > renderLimit){
+    const m=document.createElement("div");
+    m.className="more";
+    m.textContent="下面还有 "+(days.length-renderLimit)+" 天，继续往下滑…";
+    frag.appendChild(m);
+  }
+  const st=list.scrollTop;
+  list.innerHTML=""; list.appendChild(frag);
+  list.scrollTop=st;
+}
+function renderMap(force){
+  if(!state.map) return;
+  state.layers.forEach(l=>state.map.removeLayer(l));
+  state.layers=[];
+  const all=[];
+  state.days.forEach((d,i)=>{
+    if(!state.sel.has(d.key)) return;
+    const color=PALETTE[i%PALETTE.length];
+    d.items.forEach(it=>{
+      it.segs.forEach(seg=>{
+        if(seg.length<2) return;
+        const pts=project(seg);
+        const line=L.polyline(pts,{color:color,weight:3.2,opacity:.9,lineJoin:"round",lineCap:"round"});
+        line.bindTooltip(it.name+" · "+fmtDist(it.dist),{sticky:true});
+        line.addTo(state.map);
+        state.layers.push(line);
+        all.push(pts);
+      });
+    });
+  });
+  if(all.length){
+    const b=L.latLngBounds([]);
+    all.forEach(s=>s.forEach(p=>b.extend(p)));
+    if(b.isValid() && (force || !state.fitted || state.sel.size===1)){
+      state.map.fitBounds(b,{padding:[30,30]});
+      state.fitted=true;
+    }
+  }
+}
+function fitDay(key, e){
+  if(e) e.stopPropagation();
+  const d=state.byKey.get(key); if(!d||!state.map) return;
+  const b=L.latLngBounds([]);
+  d.items.forEach(it=>it.segs.forEach(s=>project(s).forEach(p=>b.extend(p))));
+  if(b.isValid()) state.map.fitBounds(b,{padding:[40,40],maxZoom:17});
+}
+function updateStat(){
+  const el=document.getElementById("stat");
+  const s2=document.getElementById("stat2");
+  if(!state.days.length){
+    el.textContent="等待载入…";
+    if(s2){ s2.classList.remove("on"); s2.innerHTML=""; }
+    return;
+  }
+  const n=state.days.reduce((a,d)=>a+d.items.length,0);
+  const dist=state.days.reduce((a,d)=>a+d.dist,0);
+  el.textContent=n+" 条轨迹 / "+state.days.length+" 天 · 合计 "+fmtDist(dist)+" · 显示 "+state.sel.size+" 天";
+  if(!s2) return;
+  const nf=fileCount();
+  if(!nf){ s2.classList.remove("on"); s2.innerHTML=""; return; }
+  const last=lastFileName();
+  s2.classList.add("on");
+  if(!state.batches.length){
+    // 打包版：数据已经在页面里了，不用再选
+    s2.innerHTML="共 <b>"+nf+"</b> 个文件，已经打包在这份页面里";
+    return;
+  }
+  s2.innerHTML="已导入 <b>"+nf+"</b> 个文件"+(state.batches.length>1?"（"+state.batches.length+" 批）":"")+
+    (last?" · 上次选到 <b>"+esc(last)+"</b>":"")+
+    (state.batches.length<=3?"<br>再点「选文件…」接着追加，重复的会自动跳过":"");
+}
+
+/* ---------- 地图与底图 ---------- */
+function buildBaseButtons(){
+  const box=document.getElementById("basemaps");
+  box.innerHTML="";
+  BASEMAPS.forEach(b=>{
+    const btn=document.createElement("button");
+    btn.textContent=b.name; btn.dataset.base=b.id;
+    btn.addEventListener("click",()=>setBasemap(b.id));
+    box.appendChild(btn);
+  });
+}
+function setBasemap(id){
+  const b=BASEMAPS.find(x=>x.id===id) || BASEMAPS[0];
+  if(state.base) state.map.removeLayer(state.base);
+  state.base=L.tileLayer(b.url,{subdomains:b.gcj?SUB:"abc",maxZoom:b.maxZoom,attribution:b.attr});
+  state.base.addTo(state.map);
+  state.gcj=b.gcj;
+  [...document.querySelectorAll("#basemaps button")].forEach(x=>x.classList.toggle("on",x.dataset.base===b.id));
+  renderMap(true);
+}
+function initMap(){
+  state.map=L.map("map",{zoomControl:true,preferCanvas:true}).setView([35,105],4);
+  L.control.scale({imperial:false}).addTo(state.map);
+  buildBaseButtons();
+  setTimeout(()=>setBasemap("amap"),0);
+}
+
+/* ---------- 事件 ---------- */
+function bindUI(){
+  const list=document.getElementById("list");
+  list.addEventListener("click",ev=>{
+    const z=ev.target.closest("[data-zoom]");
+    if(z){ fitDay(z.dataset.zoom, ev); return; }
+    if(ev.target.tagName==="INPUT") return;
+    const row=ev.target.closest(".drow");
+    if(!row) return;
+    const key=row.dataset.key;
+    if(state.sel.has(key)) state.sel.delete(key); else state.sel.add(key);
+    renderList(); renderMap(); updateStat();
+  });
+  list.addEventListener("change",ev=>{
+    const cb=ev.target.closest("[data-check]");
+    if(!cb) return;
+    if(cb.checked) state.sel.add(cb.dataset.check); else state.sel.delete(cb.dataset.check);
+    renderList(); renderMap(); updateStat();
+  });
+  document.getElementById("q").addEventListener("input",()=>renderList(true));
+
+  document.getElementById("tools").addEventListener("click",ev=>{
+    const b=ev.target.closest("button"); if(!b) return;
+    const act=b.dataset.act;
+    if(act==="all"){ state.days.forEach(d=>state.sel.add(d.key)); }
+    else if(act==="none"){ state.sel.clear(); }
+    else if(act==="7"||act==="30"){
+      const cut=new Date(); cut.setDate(cut.getDate()-(+act)); cut.setHours(0,0,0,0);
+      state.sel.clear();
+      state.days.forEach(d=>{ if(d.key.length===10 && new Date(d.key+"T12:00:00")>=cut) state.sel.add(d.key); });
+    }
+    else if(act==="month"){
+      const now=new Date(), pre=now.getFullYear()+"-"+pad(now.getMonth()+1);
+      state.sel.clear();
+      state.days.forEach(d=>{ if(d.key.startsWith(pre)) state.sel.add(d.key); });
+    }
+    else if(act==="mode"){ setMode(state.mode==="time"?"file":"time"); return; }
+    else if(act==="reset"){ resetAll(); return; }
+    else if(act==="snapshot"){ exportSnapshot(); return; }
+    state.fitted=false;
+    renderList(); renderMap(true); updateStat();
+  });
+
+  // 先把页面上原有的 input 换成带监听的版本（id 不变）
+  ["files","zip","dir"].forEach(freshPicker);
+
+  // 任何「选文件 / 选 ZIP / 选文件夹」按钮，按下时都先换成全新的 input。
+  // 用捕获阶段挂到 document 上，空列表里后生成的按钮也管得到。
+  const swapPicker = ev=>{
+    const lb=ev.target && ev.target.closest ? ev.target.closest("[data-pick]") : null;
+    if(!lb) return;
+    freshPicker(lb.dataset.pick);
+  };
+  document.addEventListener("pointerdown", swapPicker, true);
+  document.addEventListener("keydown", ev=>{
+    if(ev.key==="Enter" || ev.key===" ") swapPicker(ev);
+  }, true);
+
+  // 手机上安卓和 iOS 全都不支持选文件夹（系统沙盒限制），把入口藏掉
+  try{
+    const ua=navigator.userAgent||"";
+    const isMobile=/Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(ua);
+    const probe=document.createElement("input");
+    const noDirAttr=!("webkitdirectory" in probe) && !("directory" in probe);
+    if(isMobile || noDirAttr){
+      document.documentElement.classList.add("no-dir");
+    }
+  }catch(err){}
+
+  // 列表滑到底，接着渲染下一批
+  let moreLock=false;
+  list.addEventListener("scroll",()=>{
+    if(moreLock) return;
+    if(renderLimit>=visibleDays().length) return;
+    if(list.scrollTop+list.clientHeight > list.scrollHeight-260){
+      moreLock=true;
+      renderLimit+=60;
+      renderList();
+      setTimeout(()=>{moreLock=false;},120);
+    }
+  });
+
+  let depth=0;
+  const drop=document.getElementById("drop");
+  window.addEventListener("dragenter",e=>{ e.preventDefault(); depth++; drop.classList.add("on"); });
+  window.addEventListener("dragover",e=>e.preventDefault());
+  window.addEventListener("dragleave",()=>{ depth--; if(depth<=0){ depth=0; drop.classList.remove("on"); } });
+  window.addEventListener("drop",e=>{
+    e.preventDefault(); depth=0; drop.classList.remove("on");
+    if(e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+
+  const panel=document.getElementById("panel");
+  const flip=()=>{ panel.classList.toggle("hide"); setTimeout(()=>state.map.invalidateSize(),250); };
+  document.getElementById("toggle").addEventListener("click",flip);
+  document.getElementById("head").addEventListener("click",()=>{ if(window.innerWidth<=820) flip(); });
+}
+
+/* ---------- 启动 ---------- */
+window.addEventListener("error", ev=>{
+  const s=document.getElementById("stat");
+  if(s && ev.message) s.textContent="出错了："+ev.message;
+});
+window.addEventListener("DOMContentLoaded",()=>{
+  if(typeof L === "undefined"){
+    document.getElementById("stat").textContent="地图库没加载出来，请联网后刷新";
+    document.getElementById("list").innerHTML='<div id="empty"><b>地图库没加载出来</b>这个页面需要联网才能加载地图组件 Leaflet。<br><br>如果手机没网，请用 生成查看器.py 打出来的那份 HTML，组件是内联的，断网也能打开。</div>';
+    return;
+  }
+  initMap(); bindUI();
+  let preset=null;
+  try{ preset=JSON.parse(document.getElementById("preset").textContent||"null"); }catch(e){}
+  if(preset && preset.days && preset.days.length){
+    state.trips=[];
+    preset.days.forEach(d=>{
+      d.items.forEach(it=>{
+        it.segs=it.segs.map(s=>TRACK.decodeSeg(s));
+        it.dist=it.dist||0;
+        // 老版本打的包没有这两个字段，用已有的日期补上
+        if(it.keyTime===undefined) it.keyTime = /^\d{4}-\d{2}-\d{2}$/.test(d.key) ? d.key : null;
+        if(it.keyFile===undefined) it.keyFile = parseDateKey(it.file||"");
+        if(!it.parts){ it.part=1; it.parts=1; }
+        state.trips.push(it);
+      });
+    });
+    state.mode="time";
+    regroup();
+    if(state.days.length && state.days.length<=15){
+      state.days.forEach(d=>state.sel.add(d.key));
+    }else if(state.days.length){
+      const recent=new Date(); recent.setDate(recent.getDate()-7); recent.setHours(0,0,0,0);
+      let any=false;
+      state.days.forEach(d=>{
+        if(/^\d{4}-\d{2}-\d{2}$/.test(d.key) && new Date(d.key+"T12:00:00")>=recent){ state.sel.add(d.key); any=true; }
+      });
+      if(!any) state.days.slice(0,7).forEach(d=>state.sel.add(d.key));
+    }
+    updateModeBtn();
+    renderList(); renderMap(true); updateStat();
+    if(window.innerWidth<=820) document.getElementById("panel").classList.add("hide");
+  } else if(loadCache()){
+    updateModeBtn();
+    renderList(); renderMap(true); updateStat();
+    toast("已恢复上次导入的 "+fileCount()+" 个文件，可以接着选下一批", 3600);
+    if(window.innerWidth<=820) document.getElementById("panel").classList.add("hide");
+  } else {
+    document.getElementById("stat").textContent = document.documentElement.classList.contains("no-dir")
+      ? "点「选文件」或「选 ZIP」载入 GPX / FIT"
+      : "把 GPX / FIT 拖进来，或点「选文件」「选文件夹」";
+    renderList();
+  }
+});
+</script>
+</body>
+</html>
